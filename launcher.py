@@ -14,7 +14,7 @@ class LauncherApp:
     def __init__(self, root):
         self.root = root
         self.root.title("课堂抽号程序启动器")
-        self.root.geometry("500x450")
+        self.root.geometry("500x600")  # 增加窗口高度
         self.root.resizable(False, False)
 
         # 读取配置
@@ -33,6 +33,9 @@ class LauncherApp:
         if self.exe_files:
             latest_version = self.get_latest_version()
             self.selected_version.set(latest_version)
+
+        # 检查学生名单
+        self.check_student_list()
 
     def load_config(self):
         """加载配置文件"""
@@ -66,6 +69,20 @@ class LauncherApp:
         versions = [(v['version'], name) for name, v in self.exe_files.items()]
         versions.sort(key=lambda x: x[0], reverse=True)
         return versions[0][1]
+
+    def check_student_list(self):
+        """检查是否存在学生名单"""
+        try:
+            if os.path.exists('students.json'):
+                with open('students.json', 'r', encoding='utf-8') as f:
+                    students = json.load(f)
+                # 更新显示
+                self.student_info_label.config(text=f"已成功加载{len(students)}名学生的信息")
+                return True
+        except Exception as e:
+            pass
+        self.student_info_label.config(text="未加载学生名单")
+        return False
 
     def create_widgets(self):
         # 标题
@@ -133,7 +150,10 @@ class LauncherApp:
         student_list_frame = ttk.LabelFrame(self.root, text="学生名单管理")
         student_list_frame.pack(fill="both", expand="yes", padx=20, pady=10)
 
-        tk.Button(student_list_frame, text="导入学生名单(CSV/XLSX)", command=self.import_student_list).pack(pady=10)
+        tk.Button(student_list_frame, text="导入学生名单(CSV/XLSX)", command=self.import_student_list).pack(pady=5)
+        # 添加学生信息显示标签
+        self.student_info_label = tk.Label(student_list_frame, text="未加载学生名单")
+        self.student_info_label.pack(pady=5)
         tk.Label(student_list_frame, text="注意: CSV文件应包含'学号','姓名'列，Excel文件第一列为学号，第二列为姓名", 
                  wraplength=400, justify="left").pack(pady=5)
 
@@ -269,6 +289,8 @@ class LauncherApp:
                 json.dump(student_dict, f, ensure_ascii=False, indent=2)
                 
             messagebox.showinfo("成功", f"成功导入{len(student_dict)}名学生信息")
+            # 更新显示
+            self.student_info_label.config(text=f"已成功加载{len(student_dict)}名学生的信息")
             
         except Exception as e:
             messagebox.showerror("错误", f"导入失败: {str(e)}")
