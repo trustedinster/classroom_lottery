@@ -1,13 +1,12 @@
-import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
-import configparser
-import subprocess
-import os
-import glob
-import psutil
-import time
-import pandas as pd
-import json
+from tkinter import ttk, messagebox, filedialog, Tk, StringVar, Label, Frame, Entry, Checkbutton, Button, Radiobutton
+from configparser import ConfigParser
+from subprocess import Popen
+from os import path
+from glob import glob
+from psutil import NoSuchProcess, process_iter, AccessDenied, ZombieProcess
+from time import sleep
+from pandas import read_csv, read_excel
+from json import load, dump
 
 
 class LauncherApp:
@@ -18,13 +17,13 @@ class LauncherApp:
         self.root.resizable(False, False)
 
         # 读取配置
-        self.config = configparser.ConfigParser()
+        self.config = ConfigParser()
         self.config_file = 'config.ini'
         self.load_config()
 
         # 查找可用的程序版本
         self.exe_files = self.find_exe_files()
-        self.selected_version = tk.StringVar()
+        self.selected_version = StringVar()
 
         # 创建界面
         self.create_widgets()
@@ -46,12 +45,12 @@ class LauncherApp:
 
     def find_exe_files(self):
         """查找当前目录下所有的课堂抽号程序exe文件"""
-        exe_pattern = os.path.join('.', '课堂抽号程序*.exe')
-        exe_files = glob.glob(exe_pattern)
+        exe_pattern = path.join('.', '课堂抽号程序*.exe')
+        exe_files = glob(exe_pattern)
         # 提取版本号信息
         versions = {}
         for exe in exe_files:
-            basename = os.path.basename(exe)
+            basename = path.basename(exe)
             if basename == '课堂抽号程序.exe':
                 versions[basename] = {'version': '1.0', 'path': exe}
             else:
@@ -64,7 +63,7 @@ class LauncherApp:
         """获取最新版本"""
         if not self.exe_files:
             return ""
-        
+
         # 简单排序，找出最大的版本号
         versions = [(v['version'], name) for name, v in self.exe_files.items()]
         versions.sort(key=lambda x: x[0], reverse=True)
@@ -73,9 +72,9 @@ class LauncherApp:
     def check_student_list(self):
         """检查是否存在学生名单"""
         try:
-            if os.path.exists('students.json'):
+            if path.exists('students.json'):
                 with open('students.json', 'r', encoding='utf-8') as f:
-                    students = json.load(f)
+                    students = load(f)
                 # 更新显示
                 self.student_info_label.config(text=f"已成功加载{len(students)}名学生的信息")
                 return True
@@ -86,7 +85,7 @@ class LauncherApp:
 
     def create_widgets(self):
         # 标题
-        title_label = tk.Label(self.root, text="课堂抽号程序启动器", font=("微软雅黑", 16, "bold"))
+        title_label = Label(self.root, text="课堂抽号程序启动器", font=("微软雅黑", 16, "bold"))
         title_label.pack(pady=10)
 
         # 配置编辑区域
@@ -94,38 +93,38 @@ class LauncherApp:
         config_frame.pack(fill="both", expand="yes", padx=20, pady=10)
 
         # min_number
-        min_frame = tk.Frame(config_frame)
+        min_frame = Frame(config_frame)
         min_frame.pack(fill="x", padx=10, pady=5)
-        tk.Label(min_frame, text="最小号码:", width=15, anchor="w").pack(side="left")
-        self.min_var = tk.StringVar(value=self.config.get('lottery', 'min_number', fallback='1'))
-        tk.Entry(min_frame, textvariable=self.min_var, width=20).pack(side="left")
+        Label(min_frame, text="最小号码:", width=15, anchor="w").pack(side="left")
+        self.min_var = StringVar(value=self.config.get('lottery', 'min_number', fallback='1'))
+        Entry(min_frame, textvariable=self.min_var, width=20).pack(side="left")
 
         # max_number
-        max_frame = tk.Frame(config_frame)
+        max_frame = Frame(config_frame)
         max_frame.pack(fill="x", padx=10, pady=5)
-        tk.Label(max_frame, text="最大号码:", width=15, anchor="w").pack(side="left")
-        self.max_var = tk.StringVar(value=self.config.get('lottery', 'max_number', fallback='48'))
-        tk.Entry(max_frame, textvariable=self.max_var, width=20).pack(side="left")
+        Label(max_frame, text="最大号码:", width=15, anchor="w").pack(side="left")
+        self.max_var = StringVar(value=self.config.get('lottery', 'max_number', fallback='48'))
+        Entry(max_frame, textvariable=self.max_var, width=20).pack(side="left")
 
         # delay
-        delay_frame = tk.Frame(config_frame)
+        delay_frame = Frame(config_frame)
         delay_frame.pack(fill="x", padx=10, pady=5)
-        tk.Label(delay_frame, text="延迟(秒):", width=15, anchor="w").pack(side="left")
-        self.delay_var = tk.StringVar(value=self.config.get('lottery', 'delay', fallback='1'))
-        tk.Entry(delay_frame, textvariable=self.delay_var, width=20).pack(side="left")
+        Label(delay_frame, text="延迟(秒):", width=15, anchor="w").pack(side="left")
+        self.delay_var = StringVar(value=self.config.get('lottery', 'delay', fallback='1'))
+        Entry(delay_frame, textvariable=self.delay_var, width=20).pack(side="left")
 
         # keep
-        keep_frame = tk.Frame(config_frame)
+        keep_frame = Frame(config_frame)
         keep_frame.pack(fill="x", padx=10, pady=5)
-        tk.Label(keep_frame, text="保持时间(秒):", width=15, anchor="w").pack(side="left")
-        self.keep_var = tk.StringVar(value=self.config.get('lottery', 'keep', fallback='3'))
-        tk.Entry(keep_frame, textvariable=self.keep_var, width=20).pack(side="left")
+        Label(keep_frame, text="保持时间(秒):", width=15, anchor="w").pack(side="left")
+        self.keep_var = StringVar(value=self.config.get('lottery', 'keep', fallback='3'))
+        Entry(keep_frame, textvariable=self.keep_var, width=20).pack(side="left")
 
         # 学生讲题模式
-        mode_frame = tk.Frame(config_frame)
+        mode_frame = Frame(config_frame)
         mode_frame.pack(fill="x", padx=10, pady=5)
-        tk.Label(mode_frame, text="抽取模式:", width=15, anchor="w").pack(side="left")
-        self.mode_var = tk.StringVar(value=self.config.get('lottery', 'student_mode', fallback='0'))
+        Label(mode_frame, text="抽取模式:", width=15, anchor="w").pack(side="left")
+        self.mode_var = StringVar(value=self.config.get('lottery', 'student_mode', fallback='0'))
         mode_combo = ttk.Combobox(mode_frame, textvariable=self.mode_var, width=17)
         mode_combo['values'] = [('0 - 全随机模式'), ('1 - 学生讲题模式(正序)'), ('2 - 学生讲题模式(倒序)')]
         mode_combo['state'] = 'readonly'
@@ -136,25 +135,25 @@ class LauncherApp:
         mode_combo.pack(side="left")
 
         # 语音叫号设置
-        voice_frame = tk.Frame(config_frame)
+        voice_frame = Frame(config_frame)
         voice_frame.pack(fill="x", padx=10, pady=5)
-        tk.Label(voice_frame, text="启用语音:", width=15, anchor="w").pack(side="left")
-        self.voice_var = tk.StringVar(value=self.config.get('lottery', 'enable_voice', fallback='1'))
-        tk.Checkbutton(voice_frame, variable=self.voice_var, onvalue='1', offvalue='0').pack(side="left")
-        
-        tk.Label(voice_frame, text="叫号模板:", width=15, anchor="w").pack(side="left")
-        self.voice_template_var = tk.StringVar(value=self.config.get('lottery', 'voice_template', fallback='请{}号同学回答问题'))
-        tk.Entry(voice_frame, textvariable=self.voice_template_var, width=20).pack(side="left")
+        Label(voice_frame, text="启用语音:", width=15, anchor="w").pack(side="left")
+        self.voice_var = StringVar(value=self.config.get('lottery', 'enable_voice', fallback='1'))
+        Checkbutton(voice_frame, variable=self.voice_var, onvalue='1', offvalue='0').pack(side="left")
+
+        Label(voice_frame, text="叫号模板:", width=15, anchor="w").pack(side="left")
+        self.voice_template_var = StringVar(value=self.config.get('lottery', 'voice_template', fallback='请{}号同学回答问题'))
+        Entry(voice_frame, textvariable=self.voice_template_var, width=20).pack(side="left")
 
         # 学生名单导入区域
         student_list_frame = ttk.LabelFrame(self.root, text="学生名单管理")
         student_list_frame.pack(fill="both", expand="yes", padx=20, pady=10)
 
-        tk.Button(student_list_frame, text="导入学生名单(CSV/XLSX)", command=self.import_student_list).pack(pady=5)
+        Button(student_list_frame, text="导入学生名单(CSV/XLSX)", command=self.import_student_list).pack(pady=5)
         # 添加学生信息显示标签
-        self.student_info_label = tk.Label(student_list_frame, text="未加载学生名单")
+        self.student_info_label = Label(student_list_frame, text="未加载学生名单")
         self.student_info_label.pack(pady=5)
-        tk.Label(student_list_frame, text="注意: CSV文件应包含'学号','姓名'列，Excel文件第一列为学号，第二列为姓名", 
+        Label(student_list_frame, text="注意: CSV文件应包含'学号','姓名'列，Excel文件第一列为学号，第二列为姓名",
                  wraplength=400, justify="left").pack(pady=5)
 
         # 版本选择区域
@@ -163,22 +162,22 @@ class LauncherApp:
 
         if self.exe_files:
             for name in self.exe_files.keys():
-                tk.Radiobutton(
-                    version_frame, 
-                    text=name, 
-                    variable=self.selected_version, 
+                Radiobutton(
+                    version_frame,
+                    text=name,
+                    variable=self.selected_version,
                     value=name
                 ).pack(anchor="w", padx=10, pady=2)
         else:
-            tk.Label(version_frame, text="未找到可执行文件").pack(padx=10, pady=10)
+            Label(version_frame, text="未找到可执行文件").pack(padx=10, pady=10)
 
         # 按钮区域
-        button_frame = tk.Frame(self.root)
+        button_frame = Frame(self.root)
         button_frame.pack(pady=20)
 
-        tk.Button(button_frame, text="保存配置", command=self.save_config, width=12).pack(side="left", padx=10)
-        tk.Button(button_frame, text="运行程序", command=self.run_program, width=12).pack(side="left", padx=10)
-        tk.Button(button_frame, text="退出", command=self.root.quit, width=12).pack(side="left", padx=10)
+        Button(button_frame, text="保存配置", command=self.save_config, width=12).pack(side="left", padx=10)
+        Button(button_frame, text="运行程序", command=self.run_program, width=12).pack(side="left", padx=10)
+        Button(button_frame, text="退出", command=self.root.quit, width=12).pack(side="left", padx=10)
 
     def save_config(self):
         """保存配置到文件"""
@@ -186,12 +185,12 @@ class LauncherApp:
             # 更新配置对象
             if not self.config.has_section('lottery'):
                 self.config.add_section('lottery')
-                
+
             self.config.set('lottery', 'min_number', self.min_var.get())
             self.config.set('lottery', 'max_number', self.max_var.get())
             self.config.set('lottery', 'delay', self.delay_var.get())
             self.config.set('lottery', 'keep', self.keep_var.get())
-            
+
             # 保存学生讲题模式配置
             # 从组合框的值中提取模式数字
             mode_value = self.mode_var.get().split(' ')[0]
@@ -204,36 +203,36 @@ class LauncherApp:
             # 写入文件
             with open(self.config_file, 'w', encoding='utf-8') as configfile:
                 self.config.write(configfile)
-            
+
             messagebox.showinfo("成功", "配置已保存")
         except Exception as e:
             messagebox.showerror("错误", f"保存配置失败: {e}")
 
     def is_lottery_running(self):
         """检查是否有抽号程序正在运行"""
-        for proc in psutil.process_iter(['pid', 'name']):
+        for proc in process_iter(['pid', 'name']):
             try:
                 # 检查进程名是否包含"课堂抽号程序"
                 if "课堂抽号程序" in proc.info['name']:
                     return True
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            except (NoSuchProcess, AccessDenied, ZombieProcess):
                 pass
         return False
 
     def close_lottery_processes(self):
         """关闭所有正在运行的抽号程序"""
         closed = False
-        for proc in psutil.process_iter(['pid', 'name']):
+        for proc in process_iter(['pid', 'name']):
             try:
                 # 检查进程名是否包含"课堂抽号程序"
                 if "课堂抽号程序" in proc.info['name']:
                     proc.terminate()
                     closed = True
-            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+            except (NoSuchProcess, AccessDenied, ZombieProcess):
                 pass
         # 等待进程结束
         if closed:
-            time.sleep(1)
+            sleep(1)
         return closed
 
     def import_student_list(self):
@@ -242,22 +241,22 @@ class LauncherApp:
             title="选择学生名单文件",
             filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv"), ("All files", "*.*")]
         )
-        
+
         if not file_path:
             return
-            
+
         try:
             # 读取文件
             if file_path.endswith('.csv'):
-                df = pd.read_csv(file_path, encoding='utf-8')
+                df = read_csv(file_path, encoding='utf-8')
             else:
-                df = pd.read_excel(file_path)
-            
+                df = read_excel(file_path)
+
             # 检查列名
             if len(df.columns) < 2:
                 messagebox.showerror("错误", "文件至少需要两列（学号和姓名）")
                 return
-                
+
             # 获取学号和姓名列
             student_dict = {}
             # 尝试识别列名
@@ -269,7 +268,7 @@ class LauncherApp:
             else:
                 # 默认使用前两列
                 number_col, name_col = df.columns[0], df.columns[1]
-            
+
             # 构建字典
             for _, row in df.iterrows():
                 try:
@@ -279,19 +278,19 @@ class LauncherApp:
                         student_dict[number] = name
                 except (ValueError, KeyError):
                     continue
-            
+
             if not student_dict:
                 messagebox.showerror("错误", "未能从文件中提取有效的学生信息")
                 return
-                
+
             # 保存到JSON文件
             with open('students.json', 'w', encoding='utf-8') as f:
-                json.dump(student_dict, f, ensure_ascii=False, indent=2)
-                
+                dump(student_dict, f, ensure_ascii=False, indent=2)
+
             messagebox.showinfo("成功", f"成功导入{len(student_dict)}名学生信息")
             # 更新显示
             self.student_info_label.config(text=f"已成功加载{len(student_dict)}名学生的信息")
-            
+
         except Exception as e:
             messagebox.showerror("错误", f"导入失败: {str(e)}")
 
@@ -299,12 +298,12 @@ class LauncherApp:
         """运行选中的程序版本"""
         # 先保存配置
         self.save_config()
-        
+
         selected = self.selected_version.get()
         if not selected:
             messagebox.showwarning("警告", "请先选择一个程序版本")
             return
-            
+
         if selected not in self.exe_files:
             messagebox.showerror("错误", "选择的程序版本不存在")
             return
@@ -322,7 +321,7 @@ class LauncherApp:
             # 通过命令行参数传递配置而不是依赖config.ini
             # 从组合框的值中提取模式数字
             mode_value = self.mode_var.get().split(' ')[0]
-            
+
             cmd = [
                 exe_path,
                 f"--min-number={self.min_var.get()}",
@@ -334,7 +333,7 @@ class LauncherApp:
                 f"--voice-template={self.voice_template_var.get()}"
             ]
             # 启动程序
-            subprocess.Popen(cmd, shell=True)
+            Popen(cmd, shell=True)
             messagebox.showinfo("提示", f"正在启动 {selected}")
             # 启动成功后自动关闭启动器
             self.root.quit()
@@ -343,6 +342,6 @@ class LauncherApp:
 
 
 if __name__ == "__main__":
-    root = tk.Tk()
+    root = Tk()
     app = LauncherApp(root)
     root.mainloop()

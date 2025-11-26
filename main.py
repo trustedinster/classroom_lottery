@@ -4,24 +4,23 @@
 新增：启动播放rise_enable.wav、使用icon.ico图标
 新增：支持显示学生姓名而非仅学号
 """
-import tkinter as tk
-from tkinter import messagebox
-import json
-import pickle
-import os
-import logging
+from tkinter import messagebox, Label, BOTH, Tk
+from json import load as jsLoad
+from pickle import load, dump
+from os import path, makedirs, getcwd, remove
+from logging import getLogger, StreamHandler, FileHandler, basicConfig, DEBUG
 from datetime import datetime
-import random
-import threading
-import tempfile
-import shutil
-import sys
-import winsound  # 新增：Windows内置音频播放
-import keyboard
-import pystray
+from random import choice, randint
+from threading import Thread, Lock
+from tempfile import NamedTemporaryFile
+from shutil import move
+from sys import stdout, exit
+from winsound import SND_ASYNC, SND_FILENAME, PlaySound
+from keyboard import add_hotkey, wait
+from pystray import Icon, MenuItem, Menu
 from PIL import Image, ImageDraw
-import configparser
-import argparse
+from configparser import ConfigParser
+from argparse import ArgumentParser
 
 # ==================== 全局配置 ====================
 # 新增：资源文件路径
@@ -29,7 +28,7 @@ ICON_FILE = 'assets/icon.ico'
 SOUND_FILE = 'assets/rise_enable.wav'
 
 # 尝试从配置文件读取，如果失败则使用默认值
-config = configparser.ConfigParser()
+config = ConfigParser()
 config.read('config.ini', encoding='utf-8')
 MIN_NUMBER = config.getint('lottery', 'min_number', fallback=1)
 MAX_NUMBER = config.getint('lottery', 'max_number', fallback=48)
@@ -43,9 +42,9 @@ VOICE_TEMPLATE = config.get('lottery', 'voice_template', fallback='请{}号同�
 # 新增：学生名单
 STUDENTS = {}
 try:
-    if os.path.exists('students.json'):
+    if path.exists('students.json'):
         with open('students.json', 'r', encoding='utf-8') as f:
-            STUDENTS = json.load(f)
+            STUDENTS = jsLoad(f)
         # 确保键是整数
         STUDENTS = {int(k): v for k, v in STUDENTS.items()}
 except Exception as e:
@@ -65,7 +64,7 @@ LOG_DIR = 'logs'
 MODE_FLAG_FILE = '3sec_show.conf.start'
 
 # 全局状态
-SHOW_MODE_3SEC = os.path.exists(MODE_FLAG_FILE)
+SHOW_MODE_3SEC = path.exists(MODE_FLAG_FILE)
 logger = None
 data_manager = None
 hotkey_listener = None
@@ -81,30 +80,25 @@ student_mode_current_max = MAX_NUMBER  # 倒序模式当前最大值
 # ==================== 资源路径处理（适配打包后环境） ====================
 def get_resource_path(relative_path):
     """获取资源文件路径，适配开发环境和打包后环境"""
-    try:
-        # 打包后路径（pyinstaller会设置此变量）
-        base_path = sys._MEIPASS
-    except Exception:
-        # 开发环境路径
-        base_path = os.path.abspath(".")
-    return os.path.join(base_path, relative_path)
+    base_path = path.abspath(".")
+    return path.join(base_path, relative_path)
 
 
 # ==================== 日志初始化 ====================
 def init_logger():
     global logger
-    os.makedirs(LOG_DIR, exist_ok=True)
-    log_file = os.path.join(LOG_DIR, f'lottery_{datetime.now().strftime("%Y%m%d")}.log')
+    makedirs(LOG_DIR, exist_ok=True)
+    log_file = path.join(LOG_DIR, f'lottery_{datetime.now().strftime("%Y%m%d")}.log')
 
-    logging.basicConfig(
-        level=logging.DEBUG,
+    basicConfig(
+        level=DEBUG,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
-            logging.StreamHandler(sys.stdout)
+            FileHandler(log_file, encoding='utf-8'),
+            StreamHandler(stdout)
         ]
     )
-    logger = logging.getLogger(__name__)
+    logger = getLogger(__name__)
     mode_text = "全随机模式"
     if STUDENT_MODE == 1:
         mode_text = "学生讲题模式(正序)"
@@ -120,11 +114,11 @@ def init_logger():
 def play_startup_sound():
     """播放启动音效，失败不影响主程序"""
     sound_path = get_resource_path(SOUND_FILE)
-    if os.path.exists(sound_path):
+    if path.exists(sound_path):
         try:
             # 异步播放音效，避免阻塞启动
-            threading.Thread(
-                target=lambda: winsound.PlaySound(sound_path, winsound.SND_FILENAME | winsound.SND_ASYNC),
+            Thread(
+                target=lambda: PlaySound(sound_path, SND_FILENAME | SND_ASYNC),
                 daemon=True
             ).start()
             logger.info(f'启动音效播放成功：{SOUND_FILE}')
@@ -139,9 +133,9 @@ class DataManager:
     def __init__(self):
         self.degraded = False
         self.data = self._init_data()
-        self.lock = threading.Lock()
-        if not os.path.exists(os.getcwd() + "\\temp"):
-            os.makedirs(os.getcwd() + "\\temp")
+        self.lock = Lock()
+        if not path.exists(getcwd() + "\\temp"):
+            makedirs(getcwd() + "\\temp")
 
 
     def _init_data(self):
@@ -149,7 +143,7 @@ class DataManager:
         default_data = {
             'numbers': {i: 0 for i in range(MIN_NUMBER, MAX_NUMBER + 1)}
         }
-        if not os.path.exists(DATA_FILE):
+        if not path.exists(DATA_FILE):
             logger.info(f'未找到历史数据文件，初始化默认数据')
             if not self._write_data(default_data):
                 logger.warning('默认数据写入失败，将在首次抽号后重试')
@@ -157,7 +151,7 @@ class DataManager:
 
         try:
             with open(DATA_FILE, 'rb') as f:
-                data = pickle.load(f)
+                data = load(f)
             # 确保所有数字都在数据中
             if 'numbers' not in data:
                 data['numbers'] = default_data['numbers']
@@ -177,23 +171,29 @@ class DataManager:
     def _write_data(self, data):
         temp_path = None
         try:
-            with tempfile.NamedTemporaryFile(
-                    dir=os.getcwd() + "\\temp", prefix='temp_', suffix='.pkl',
+            # 确保temp目录存在
+            temp_dir = path.join(getcwd(), "temp")
+            if not path.exists(temp_dir):
+                makedirs(temp_dir)
+                
+            with NamedTemporaryFile(
+                    dir=temp_dir, prefix='temp_', suffix='.pkl',
                     delete=False, mode='wb'
             ) as temp_file:
                 temp_path = temp_file.name
-                pickle.dump(data, temp_file)
+                dump(data, temp_file)
 
-            if os.path.exists(os.getcwd() + "\\" + DATA_FILE):
-                os.remove(os.getcwd() + "\\" + DATA_FILE)
-            shutil.move(temp_path, os.getcwd() + "\\" + DATA_FILE)
+            target_path = path.join(getcwd(), DATA_FILE)
+            if path.exists(target_path):
+                remove(target_path)
+            move(temp_path, target_path)
             logger.debug('数据原子写入成功')
             return True
         except Exception as e:
             logger.error(f'数据写入失败：{str(e)}')
-            if temp_path and os.path.exists(temp_path):
+            if temp_path and path.exists(temp_path):
                 try:
-                    os.remove(temp_path)
+                    remove(temp_path)
                     logger.debug(f'已清理临时文件：{temp_path}')
                 except Exception as e2:
                     logger.warning(f'临时文件清理失败：{str(e2)}')
@@ -201,17 +201,21 @@ class DataManager:
 
     def update_stat(self, number):
         def _do_update():
-            with self.lock:
-                # 直接增加对应数字的计数
-                self.data['numbers'][number] += 1
-                write_thread = threading.Thread(target=self._write_data, args=(self.data.copy(),))
-                write_thread.daemon = True
-                write_thread.start()
-                write_thread.join(timeout=1.0)
-                if write_thread.is_alive():
-                    logger.warning('数据写入超时，可能存在数据丢失')
+            try:
+                with self.lock:
+                    # 直接增加对应数字的计数
+                    self.data['numbers'][number] += 1
+                    # 增加超时时间到2秒
+                    write_thread = Thread(target=self._write_data, args=(self.data.copy(),))
+                    write_thread.daemon = True
+                    write_thread.start()
+                    write_thread.join(timeout=2.0)
+                    if write_thread.is_alive():
+                        logger.warning('数据写入超时，可能存在数据丢失')
+            except Exception as e:
+                logger.error(f'更新统计数据时发生错误: {str(e)}')
 
-        thread = threading.Thread(target=_do_update)
+        thread = Thread(target=_do_update)
         thread.daemon = True
         thread.start()
 
@@ -229,26 +233,10 @@ def get_random_number():
     if STUDENT_MODE == 2:
         return get_student_mode_number_reverse()
     
-    # 默认全随机模式
-    valid_numbers = list(range(MIN_NUMBER, MAX_NUMBER + 1))
-    # 排除已经使用过的号码
-    valid_numbers = [n for n in valid_numbers if n not in student_mode_used_numbers]
-    
-    if not valid_numbers:
-        # 所有号码都已使用，重置列表
-        student_mode_used_numbers.clear()
-        # 重置学生讲题模式的当前值
-        global student_mode_current_min, student_mode_current_max
-        student_mode_current_min = MIN_NUMBER
-        student_mode_current_max = MAX_NUMBER
-        logger.info(f'全随机模式 - 所有号码已使用，重置列表。当前已使用号码数: {len(student_mode_used_numbers)}')
-        valid_numbers = list(range(MIN_NUMBER, MAX_NUMBER + 1))
-        
-    selected_number = random.choice(valid_numbers)
-    student_mode_used_numbers.add(selected_number)
+    # 默认全随机模式 - 改为放回式抽取
+    selected_number = randint(MIN_NUMBER, MAX_NUMBER)
     
     logger.info(f'全随机模式抽中号数：{selected_number}（降级模式：{data_manager.degraded}）')
-    logger.debug(f'当前已使用号码: {sorted(student_mode_used_numbers)}')
     return selected_number
 
 
@@ -299,7 +287,7 @@ def get_student_mode_number_forward():
         logger.debug(f'正序模式 - 重置后区间: [{range_start}, {range_end}], 有效号码: {valid_numbers}')
     
     # 从有效号码中随机选择一个
-    selected_number = random.choice(valid_numbers)
+    selected_number = choice(valid_numbers)
     student_mode_used_numbers.add(selected_number)
     
     # 更新current_min为选中的号码
@@ -358,7 +346,7 @@ def get_student_mode_number_reverse():
         logger.debug(f'倒序模式 - 重置后区间: [{range_start}, {range_end}], 有效号码: {valid_numbers}')
     
     # 从有效号码中随机选择一个
-    selected_number = random.choice(valid_numbers)
+    selected_number = choice(valid_numbers)
     student_mode_used_numbers.add(selected_number)
     
     # 更新current_max为选中的号码
@@ -370,7 +358,7 @@ def get_student_mode_number_reverse():
     return selected_number
 
 
-class LotteryWindow(tk.Tk):
+class LotteryWindow(Tk):
     def __init__(self, number):
         super().__init__()
         self.number = number
@@ -401,17 +389,17 @@ class LotteryWindow(tk.Tk):
         self.geometry(f'{WINDOW_WIDTH}x{WINDOW_HEIGHT}+{x}+{y}')
 
         # 号数标签
-        self.number_label = tk.Label(
+        self.number_label = Label(
             self, text='', font=('黑体', 40 if STUDENTS else 60, 'bold'), fg='#333333', bg='white'
         )
-        self.number_label.pack(fill=tk.BOTH, expand=True)
+        self.number_label.pack(fill=BOTH, expand=True)
 
         # 如果有学生名单，添加姓名标签
         if STUDENTS:
-            self.name_label = tk.Label(
+            self.name_label = Label(
                 self, text='', font=('黑体', 20, 'bold'), fg='#333333', bg='white'
             )
-            self.name_label.pack(fill=tk.BOTH, expand=True)
+            self.name_label.pack(fill=BOTH, expand=True)
         else:
             self.name_label = None
 
@@ -425,7 +413,7 @@ class LotteryWindow(tk.Tk):
     def start_scroll(self):
         self.is_scrolling = True
         self.scroll_count += 1
-        random_num = random.randint(MIN_NUMBER, MAX_NUMBER)
+        random_num = randint(MIN_NUMBER, MAX_NUMBER)
         random_display_text = STUDENTS.get(random_num, str(random_num))
         
         if self.name_label:
@@ -483,18 +471,18 @@ def create_tray_icon():
         draw = ImageDraw.Draw(image)
         draw.ellipse((10, 10, 54, 54), fill='darkred')
 
-    menu = pystray.Menu(
-        pystray.MenuItem('退出程序', on_tray_exit)
+    menu = Menu(
+        MenuItem('退出程序', on_tray_exit)
     )
 
-    tray_icon = pystray.Icon(
+    tray_icon = Icon(
         name='课堂抽号',
         icon=image,
         title='课堂抽号（快捷键：按alt）',
         menu=menu
     )
 
-    tray_thread = threading.Thread(target=tray_icon.run)
+    tray_thread = Thread(target=tray_icon.run)
     tray_thread.daemon = True
     tray_thread.start()
     logger.info('托盘功能启动成功')
@@ -511,7 +499,7 @@ def on_tray_exit(icon, item):
     icon.stop()
     if root:
         root.destroy()
-    sys.exit(0)
+    exit(0)
 
 
 # ==================== 快捷键监听 ====================
@@ -521,7 +509,7 @@ def on_hotkey():
         data_manager.update_stat(number)
         # 如果启用了语音叫号，则在新线程中播放语音
         if ENABLE_VOICE:
-            speak_thread = threading.Thread(target=speak_number, args=(number,))
+            speak_thread = Thread(target=speak_number, args=(number,))
             speak_thread.daemon = True
             speak_thread.start()
         window = LotteryWindow(number)
@@ -535,8 +523,8 @@ def start_hotkey_listener():
     global hotkey_listener
     try:
         # 使用keyboard库替代pynput，检测双击shift
-        keyboard.add_hotkey(HOTKEY, on_hotkey)
-        hotkey_listener = threading.Thread(target=keyboard.wait)
+        add_hotkey(HOTKEY, on_hotkey)
+        hotkey_listener = Thread(target=wait)
         hotkey_listener.daemon = True
         hotkey_listener.start()
         logger.info(f'快捷键监听启动成功（双击shift）')
@@ -557,9 +545,9 @@ def speak_number(number):
         # 构造叫号文本 - 如果有学生姓名就叫姓名，否则叫学号
         student_name = STUDENTS.get(number)
         if student_name:
-            speak_text = f"请{student_name}同学回答问题"
+            speak_text = VOICE_TEMPLATE.format(student_name)
         else:
-            speak_text = VOICE_TEMPLATE.format(str(number))
+            speak_text = VOICE_TEMPLATE.format(str(number)+'号')
         
         # Windows 7兼容的语音方法
         # 使用SAPI.SpVoice COM组件实现TTS
@@ -604,7 +592,7 @@ def main():
     data_manager = DataManager()
 
     # 创建主根窗口并隐藏
-    root = tk.Tk()
+    root = Tk()
     root.withdraw()
 
     # 播放启动音效
@@ -626,16 +614,16 @@ if __name__ == '__main__':
         else:
             print(f'程序崩溃：{str(e)}')
         try:
-            temp_root = tk.Tk()
+            temp_root = Tk()
             temp_root.withdraw()
             messagebox.showerror('错误', '程序运行出错，请查看logs目录下的日志文件！')
             temp_root.destroy()
         except:
             pass
-        sys.exit(1)
+        exit(1)
 
 # 如果通过命令行参数启动，则使用命令行参数覆盖配置文件
-parser = argparse.ArgumentParser()
+parser = ArgumentParser()
 parser.add_argument('--min-number', type=int, help='最小号码')
 parser.add_argument('--max-number', type=int, help='最大号码')
 parser.add_argument('--delay', type=int, help='延迟秒数')
