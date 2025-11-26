@@ -1,0 +1,259 @@
+import tkinter as tk
+from tkinter import ttk, messagebox, filedialog
+import configparser
+import subprocess
+import os
+import glob
+import psutil
+import time
+
+
+class LauncherApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("课堂抽号程序启动器")
+        self.root.geometry("500x450")
+        self.root.resizable(False, False)
+
+        # 读取配置
+        self.config = configparser.ConfigParser()
+        self.config_file = 'config.ini'
+        self.load_config()
+
+        # 查找可用的程序版本
+        self.exe_files = self.find_exe_files()
+        self.selected_version = tk.StringVar()
+
+        # 创建界面
+        self.create_widgets()
+
+        # 设置默认选中的版本
+        if self.exe_files:
+            latest_version = self.get_latest_version()
+            self.selected_version.set(latest_version)
+
+    def load_config(self):
+        """加载配置文件"""
+        try:
+            self.config.read(self.config_file, encoding='utf-8')
+        except Exception as e:
+            messagebox.showerror("错误", f"无法读取配置文件: {e}")
+
+    def find_exe_files(self):
+        """查找当前目录下所有的课堂抽号程序exe文件"""
+        exe_pattern = os.path.join('.', '课堂抽号程序*.exe')
+        exe_files = glob.glob(exe_pattern)
+        # 提取版本号信息
+        versions = {}
+        for exe in exe_files:
+            basename = os.path.basename(exe)
+            if basename == '课堂抽号程序.exe':
+                versions[basename] = {'version': '1.0', 'path': exe}
+            else:
+                # 提取版本号，例如 课堂抽号程序2.0.exe -> 2.0
+                version = basename.replace('课堂抽号程序', '').replace('.exe', '')
+                versions[basename] = {'version': version, 'path': exe}
+        return versions
+
+    def get_latest_version(self):
+        """获取最新版本"""
+        if not self.exe_files:
+            return ""
+        
+        # 简单排序，找出最大的版本号
+        versions = [(v['version'], name) for name, v in self.exe_files.items()]
+        versions.sort(key=lambda x: x[0], reverse=True)
+        return versions[0][1]
+
+    def create_widgets(self):
+        # 标题
+        title_label = tk.Label(self.root, text="课堂抽号程序启动器", font=("微软雅黑", 16, "bold"))
+        title_label.pack(pady=10)
+
+        # 配置编辑区域
+        config_frame = ttk.LabelFrame(self.root, text="配置设置")
+        config_frame.pack(fill="both", expand="yes", padx=20, pady=10)
+
+        # min_number
+        min_frame = tk.Frame(config_frame)
+        min_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(min_frame, text="最小号码:", width=15, anchor="w").pack(side="left")
+        self.min_var = tk.StringVar(value=self.config.get('lottery', 'min_number', fallback='1'))
+        tk.Entry(min_frame, textvariable=self.min_var, width=20).pack(side="left")
+
+        # max_number
+        max_frame = tk.Frame(config_frame)
+        max_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(max_frame, text="最大号码:", width=15, anchor="w").pack(side="left")
+        self.max_var = tk.StringVar(value=self.config.get('lottery', 'max_number', fallback='48'))
+        tk.Entry(max_frame, textvariable=self.max_var, width=20).pack(side="left")
+
+        # delay
+        delay_frame = tk.Frame(config_frame)
+        delay_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(delay_frame, text="延迟(秒):", width=15, anchor="w").pack(side="left")
+        self.delay_var = tk.StringVar(value=self.config.get('lottery', 'delay', fallback='1'))
+        tk.Entry(delay_frame, textvariable=self.delay_var, width=20).pack(side="left")
+
+        # keep
+        keep_frame = tk.Frame(config_frame)
+        keep_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(keep_frame, text="保持时间(秒):", width=15, anchor="w").pack(side="left")
+        self.keep_var = tk.StringVar(value=self.config.get('lottery', 'keep', fallback='3'))
+        tk.Entry(keep_frame, textvariable=self.keep_var, width=20).pack(side="left")
+
+        # 学生讲题模式
+        mode_frame = tk.Frame(config_frame)
+        mode_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(mode_frame, text="抽取模式:", width=15, anchor="w").pack(side="left")
+        self.mode_var = tk.StringVar(value=self.config.get('lottery', 'student_mode', fallback='0'))
+        mode_combo = ttk.Combobox(mode_frame, textvariable=self.mode_var, width=17)
+        mode_combo['values'] = [('0 - 全随机模式'), ('1 - 学生讲题模式(正序)'), ('2 - 学生讲题模式(倒序)')]
+        mode_combo['state'] = 'readonly'
+        # 设置默认显示值
+        current_mode = self.config.get('lottery', 'student_mode', fallback='0')
+        mode_map = {'0': '0 - 全随机模式', '1': '1 - 学生讲题模式(正序)', '2': '2 - 学生讲题模式(倒序)'}
+        mode_combo.set(mode_map.get(current_mode, '0 - 全随机模式'))
+        mode_combo.pack(side="left")
+
+        # 语音叫号设置
+        voice_frame = tk.Frame(config_frame)
+        voice_frame.pack(fill="x", padx=10, pady=5)
+        tk.Label(voice_frame, text="启用语音:", width=15, anchor="w").pack(side="left")
+        self.voice_var = tk.StringVar(value=self.config.get('lottery', 'enable_voice', fallback='1'))
+        tk.Checkbutton(voice_frame, variable=self.voice_var, onvalue='1', offvalue='0').pack(side="left")
+        
+        tk.Label(voice_frame, text="叫号模板:", width=15, anchor="w").pack(side="left")
+        self.voice_template_var = tk.StringVar(value=self.config.get('lottery', 'voice_template', fallback='请{}号同学回答问题'))
+        tk.Entry(voice_frame, textvariable=self.voice_template_var, width=20).pack(side="left")
+
+        # 版本选择区域
+        version_frame = ttk.LabelFrame(self.root, text="程序版本选择")
+        version_frame.pack(fill="both", expand="yes", padx=20, pady=10)
+
+        if self.exe_files:
+            for name in self.exe_files.keys():
+                tk.Radiobutton(
+                    version_frame, 
+                    text=name, 
+                    variable=self.selected_version, 
+                    value=name
+                ).pack(anchor="w", padx=10, pady=2)
+        else:
+            tk.Label(version_frame, text="未找到可执行文件").pack(padx=10, pady=10)
+
+        # 按钮区域
+        button_frame = tk.Frame(self.root)
+        button_frame.pack(pady=20)
+
+        tk.Button(button_frame, text="保存配置", command=self.save_config, width=12).pack(side="left", padx=10)
+        tk.Button(button_frame, text="运行程序", command=self.run_program, width=12).pack(side="left", padx=10)
+        tk.Button(button_frame, text="退出", command=self.root.quit, width=12).pack(side="left", padx=10)
+
+    def save_config(self):
+        """保存配置到文件"""
+        try:
+            # 更新配置对象
+            if not self.config.has_section('lottery'):
+                self.config.add_section('lottery')
+                
+            self.config.set('lottery', 'min_number', self.min_var.get())
+            self.config.set('lottery', 'max_number', self.max_var.get())
+            self.config.set('lottery', 'delay', self.delay_var.get())
+            self.config.set('lottery', 'keep', self.keep_var.get())
+            
+            # 保存学生讲题模式配置
+            # 从组合框的值中提取模式数字
+            mode_value = self.mode_var.get().split(' ')[0]
+            self.config.set('lottery', 'student_mode', mode_value)
+
+            # 保存语音叫号配置
+            self.config.set('lottery', 'enable_voice', self.voice_var.get())
+            self.config.set('lottery', 'voice_template', self.voice_template_var.get())
+
+            # 写入文件
+            with open(self.config_file, 'w', encoding='utf-8') as configfile:
+                self.config.write(configfile)
+            
+            messagebox.showinfo("成功", "配置已保存")
+        except Exception as e:
+            messagebox.showerror("错误", f"保存配置失败: {e}")
+
+    def is_lottery_running(self):
+        """检查是否有抽号程序正在运行"""
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                # 检查进程名是否包含"课堂抽号程序"
+                if "课堂抽号程序" in proc.info['name']:
+                    return True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        return False
+
+    def close_lottery_processes(self):
+        """关闭所有正在运行的抽号程序"""
+        closed = False
+        for proc in psutil.process_iter(['pid', 'name']):
+            try:
+                # 检查进程名是否包含"课堂抽号程序"
+                if "课堂抽号程序" in proc.info['name']:
+                    proc.terminate()
+                    closed = True
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                pass
+        # 等待进程结束
+        if closed:
+            time.sleep(1)
+        return closed
+
+    def run_program(self):
+        """运行选中的程序版本"""
+        # 先保存配置
+        self.save_config()
+        
+        selected = self.selected_version.get()
+        if not selected:
+            messagebox.showwarning("警告", "请先选择一个程序版本")
+            return
+            
+        if selected not in self.exe_files:
+            messagebox.showerror("错误", "选择的程序版本不存在")
+            return
+
+        # 检查是否已经有抽号程序在运行
+        if self.is_lottery_running():
+            result = messagebox.askokcancel("提示", "已经有一个抽号程序在运行，需要关闭它才能继续。点击确定关闭运行中的程序。")
+            if result:
+                self.close_lottery_processes()
+            else:
+                return
+
+        try:
+            exe_path = self.exe_files[selected]['path']
+            # 通过命令行参数传递配置而不是依赖config.ini
+            # 从组合框的值中提取模式数字
+            mode_value = self.mode_var.get().split(' ')[0]
+            
+            cmd = [
+                exe_path,
+                f"--min-number={self.min_var.get()}",
+                f"--max-number={self.max_var.get()}",
+                f"--delay={self.delay_var.get()}",
+                f"--keep={self.keep_var.get()}",
+                f"--student-mode={mode_value}",
+                f"--enable-voice={self.voice_var.get()}",
+                f"--voice-template={self.voice_template_var.get()}"
+            ]
+            # 启动程序
+            subprocess.Popen(cmd, shell=True)
+            messagebox.showinfo("提示", f"正在启动 {selected}")
+            # 启动成功后自动关闭启动器
+            self.root.quit()
+        except Exception as e:
+            messagebox.showerror("错误", f"启动程序失败: {e}")
+
+
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = LauncherApp(root)
+    root.mainloop()

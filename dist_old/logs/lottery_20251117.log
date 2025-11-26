@@ -1,0 +1,182 @@
+2025-11-17 12:31:41,674 - INFO - 程序启动 - 显示模式：直接显示模式
+2025-11-17 12:31:41,674 - INFO - 未找到历史数据文件，初始化默认数据
+2025-11-17 12:31:41,674 - ERROR - 数据写入失败：[Errno 2] No such file or directory: 'C:\\Python\\classroom_lottery\\dist\\temp\\temp_oyu3_4ou.pkl'
+2025-11-17 12:31:41,674 - WARNING - 默认数据写入失败，将在首次抽号后重试
+2025-11-17 12:31:41,993 - INFO - 启动音效播放成功：assets/rise_enable.wav
+2025-11-17 12:31:42,024 - DEBUG - Importing BlpImagePlugin
+2025-11-17 12:31:42,024 - DEBUG - Importing BmpImagePlugin
+2025-11-17 12:31:42,024 - DEBUG - Importing BufrStubImagePlugin
+2025-11-17 12:31:42,024 - DEBUG - Importing CurImagePlugin
+2025-11-17 12:31:42,024 - DEBUG - Importing DcxImagePlugin
+2025-11-17 12:31:42,024 - DEBUG - Importing DdsImagePlugin
+2025-11-17 12:31:42,024 - DEBUG - Importing EpsImagePlugin
+2025-11-17 12:31:42,024 - DEBUG - Importing FitsImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing FliImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing FpxImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Image: failed to import FpxImagePlugin: No module named 'olefile'
+2025-11-17 12:31:42,040 - DEBUG - Importing FtexImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing GbrImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing GifImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing GribStubImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing Hdf5StubImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing IcnsImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing IcoImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing ImImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing ImtImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing IptcImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing JpegImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing Jpeg2KImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing McIdasImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing MicImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Image: failed to import MicImagePlugin: No module named 'olefile'
+2025-11-17 12:31:42,040 - DEBUG - Importing MpegImagePlugin
+2025-11-17 12:31:42,040 - DEBUG - Importing MpoImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing MspImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PalmImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PcdImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PcxImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PdfImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PixarImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PngImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PpmImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing PsdImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing QoiImagePlugin
+2025-11-17 12:31:42,071 - DEBUG - Importing SgiImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing SpiderImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing SunImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing TgaImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing TiffImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing WebPImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing WmfImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing XbmImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing XpmImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - Importing XVThumbImagePlugin
+2025-11-17 12:31:42,087 - DEBUG - STREAM b'IHDR' 188510 13
+2025-11-17 12:31:42,087 - DEBUG - STREAM b'IDAT' 188535 5010
+2025-11-17 12:31:42,087 - INFO - 成功加载图标文件：assets/icon.ico
+2025-11-17 12:31:42,087 - INFO - 托盘功能启动成功
+2025-11-17 12:31:42,134 - INFO - 快捷键监听启动成功（<shift>）
+2025-11-17 12:31:44,027 - INFO - 抽中号数：27（降级模式：False）
+2025-11-17 12:31:44,386 - DEBUG - 数据原子写入成功
+2025-11-17 12:31:44,402 - INFO - 直接显示模式：已显示结果
+2025-11-17 12:31:59,710 - INFO - 用户通过托盘退出程序
+2025-11-17 12:32:05,305 - INFO - 程序启动 - 显示模式：直接显示模式
+2025-11-17 12:32:05,305 - INFO - 历史数据读取成功
+2025-11-17 12:32:05,600 - INFO - 启动音效播放成功：assets/rise_enable.wav
+2025-11-17 12:32:05,615 - DEBUG - Importing BlpImagePlugin
+2025-11-17 12:32:05,615 - DEBUG - Importing BmpImagePlugin
+2025-11-17 12:32:05,615 - DEBUG - Importing BufrStubImagePlugin
+2025-11-17 12:32:05,615 - DEBUG - Importing CurImagePlugin
+2025-11-17 12:32:05,615 - DEBUG - Importing DcxImagePlugin
+2025-11-17 12:32:05,615 - DEBUG - Importing DdsImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Importing EpsImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Importing FitsImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Importing FliImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Importing FpxImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Image: failed to import FpxImagePlugin: No module named 'olefile'
+2025-11-17 12:32:05,631 - DEBUG - Importing FtexImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Importing GbrImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Importing GifImagePlugin
+2025-11-17 12:32:05,631 - DEBUG - Importing GribStubImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing Hdf5StubImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing IcnsImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing IcoImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing ImImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing ImtImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing IptcImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing JpegImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing Jpeg2KImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing McIdasImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing MicImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Image: failed to import MicImagePlugin: No module named 'olefile'
+2025-11-17 12:32:05,647 - DEBUG - Importing MpegImagePlugin
+2025-11-17 12:32:05,647 - DEBUG - Importing MpoImagePlugin
+2025-11-17 12:32:05,678 - DEBUG - Importing MspImagePlugin
+2025-11-17 12:32:05,678 - DEBUG - Importing PalmImagePlugin
+2025-11-17 12:32:05,678 - DEBUG - Importing PcdImagePlugin
+2025-11-17 12:32:05,678 - DEBUG - Importing PcxImagePlugin
+2025-11-17 12:32:05,678 - DEBUG - Importing PdfImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing PixarImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing PngImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing PpmImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing PsdImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing QoiImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing SgiImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing SpiderImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing SunImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing TgaImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing TiffImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing WebPImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing WmfImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing XbmImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing XpmImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - Importing XVThumbImagePlugin
+2025-11-17 12:32:05,694 - DEBUG - STREAM b'IHDR' 188510 13
+2025-11-17 12:32:05,694 - DEBUG - STREAM b'IDAT' 188535 5010
+2025-11-17 12:32:05,694 - INFO - 成功加载图标文件：assets/icon.ico
+2025-11-17 12:32:05,709 - INFO - 托盘功能启动成功
+2025-11-17 12:32:05,725 - INFO - 快捷键监听启动成功（<shift>）
+2025-11-17 12:32:07,085 - INFO - 抽中号数：21（降级模式：False）
+2025-11-17 12:32:07,413 - INFO - 直接显示模式：已显示结果
+2025-11-17 12:32:07,413 - DEBUG - 数据原子写入成功
+2025-11-17 12:32:53,393 - INFO - 用户通过托盘退出程序
+2025-11-17 12:32:58,870 - INFO - 程序启动 - 显示模式：三秒变动模式
+2025-11-17 12:32:58,870 - INFO - 历史数据读取成功
+2025-11-17 12:32:59,167 - INFO - 启动音效播放成功：assets/rise_enable.wav
+2025-11-17 12:32:59,198 - DEBUG - Importing BlpImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing BmpImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing BufrStubImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing CurImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing DcxImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing DdsImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing EpsImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing FitsImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing FliImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing FpxImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Image: failed to import FpxImagePlugin: No module named 'olefile'
+2025-11-17 12:32:59,198 - DEBUG - Importing FtexImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing GbrImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing GifImagePlugin
+2025-11-17 12:32:59,198 - DEBUG - Importing GribStubImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing Hdf5StubImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing IcnsImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing IcoImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing ImImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing ImtImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing IptcImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing JpegImagePlugin
+2025-11-17 12:32:59,213 - DEBUG - Importing Jpeg2KImagePlugin
+2025-11-17 12:32:59,229 - DEBUG - Importing McIdasImagePlugin
+2025-11-17 12:32:59,229 - DEBUG - Importing MicImagePlugin
+2025-11-17 12:32:59,229 - DEBUG - Image: failed to import MicImagePlugin: No module named 'olefile'
+2025-11-17 12:32:59,229 - DEBUG - Importing MpegImagePlugin
+2025-11-17 12:32:59,229 - DEBUG - Importing MpoImagePlugin
+2025-11-17 12:32:59,260 - DEBUG - Importing MspImagePlugin
+2025-11-17 12:32:59,260 - DEBUG - Importing PalmImagePlugin
+2025-11-17 12:32:59,260 - DEBUG - Importing PcdImagePlugin
+2025-11-17 12:32:59,260 - DEBUG - Importing PcxImagePlugin
+2025-11-17 12:32:59,260 - DEBUG - Importing PdfImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing PixarImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing PngImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing PpmImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing PsdImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing QoiImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing SgiImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing SpiderImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing SunImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing TgaImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing TiffImagePlugin
+2025-11-17 12:32:59,276 - DEBUG - Importing WebPImagePlugin
+2025-11-17 12:32:59,292 - DEBUG - Importing WmfImagePlugin
+2025-11-17 12:32:59,292 - DEBUG - Importing XbmImagePlugin
+2025-11-17 12:32:59,292 - DEBUG - Importing XpmImagePlugin
+2025-11-17 12:32:59,292 - DEBUG - Importing XVThumbImagePlugin
+2025-11-17 12:32:59,292 - DEBUG - STREAM b'IHDR' 188510 13
+2025-11-17 12:32:59,292 - DEBUG - STREAM b'IDAT' 188535 5010
+2025-11-17 12:32:59,292 - INFO - 成功加载图标文件：assets/icon.ico
+2025-11-17 12:32:59,292 - INFO - 托盘功能启动成功
+2025-11-17 12:32:59,323 - INFO - 快捷键监听启动成功（<shift>）
+2025-11-17 12:33:01,544 - INFO - 抽中号数：47（降级模式：False）
+2025-11-17 12:33:01,904 - DEBUG - 数据原子写入成功
+2025-11-17 12:33:08,686 - INFO - 三秒变动模式：已定格最终结果
+2025-11-17 12:33:29,628 - INFO - 用户通过托盘退出程序
