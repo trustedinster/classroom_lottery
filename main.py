@@ -2,6 +2,7 @@
 """
 课堂号数抽取程序（Windows 7/10适配）- 带启动音效版
 新增：启动播放rise_enable.wav、使用icon.ico图标
+新增：支持显示学生姓名而非仅学号
 """
 import tkinter as tk
 from tkinter import messagebox
@@ -38,6 +39,17 @@ KEEP = config.getint('lottery', 'keep', fallback=3)
 STUDENT_MODE = config.getint('lottery', 'student_mode', fallback=0)  # 0=关闭, 1=正序, 2=倒序
 ENABLE_VOICE = config.getint('lottery', 'enable_voice', fallback=1)
 VOICE_TEMPLATE = config.get('lottery', 'voice_template', fallback='请{}号同学回答问题')
+
+# 新增：学生名单
+STUDENTS = {}
+try:
+    if os.path.exists('students.json'):
+        with open('students.json', 'r', encoding='utf-8') as f:
+            STUDENTS = json.load(f)
+        # 确保键是整数
+        STUDENTS = {int(k): v for k, v in STUDENTS.items()}
+except Exception as e:
+    pass
 
 TEN_DIGITS = [1, 2, 3, 4]
 UNIT_DIGITS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
@@ -365,6 +377,10 @@ class LotteryWindow(tk.Tk):
         self.is_scrolling = False
         self.scroll_count = 0
         self.max_scroll_times = DELAY  # 减少滚动次数以实现更平稳的停止
+        
+        # 新增：如果有学生姓名则使用姓名，否则使用号码
+        self.display_text = STUDENTS.get(self.number, str(self.number))
+        
         self._init_window()
 
     def _init_window(self):
@@ -386,9 +402,18 @@ class LotteryWindow(tk.Tk):
 
         # 号数标签
         self.number_label = tk.Label(
-            self, text='', font=('黑体', 60, 'bold'), fg='#333333', bg='white'
+            self, text='', font=('黑体', 40 if STUDENTS else 60, 'bold'), fg='#333333', bg='white'
         )
         self.number_label.pack(fill=tk.BOTH, expand=True)
+
+        # 如果有学生名单，添加姓名标签
+        if STUDENTS:
+            self.name_label = tk.Label(
+                self, text='', font=('黑体', 20, 'bold'), fg='#333333', bg='white'
+            )
+            self.name_label.pack(fill=tk.BOTH, expand=True)
+        else:
+            self.name_label = None
 
         # self.bind('<FocusOut>', self.on_focus_out)
 
@@ -401,7 +426,14 @@ class LotteryWindow(tk.Tk):
         self.is_scrolling = True
         self.scroll_count += 1
         random_num = random.randint(MIN_NUMBER, MAX_NUMBER)
-        self.number_label.config(text=str(random_num))
+        random_display_text = STUDENTS.get(random_num, str(random_num))
+        
+        if self.name_label:
+            # 分别显示学号和姓名
+            self.number_label.config(text=f"№{random_num}")
+            self.name_label.config(text=random_display_text if random_display_text != str(random_num) else "")
+        else:
+            self.number_label.config(text=random_display_text)
         
         # 实现逐渐减慢的滚动效果
         if self.scroll_count < self.max_scroll_times:
@@ -413,13 +445,25 @@ class LotteryWindow(tk.Tk):
 
     def stop_scroll(self):
         self.is_scrolling = False
-        self.number_label.config(text=str(self.number),fg="red")
+        if self.name_label:
+            # 分别显示学号和姓名
+            self.number_label.config(text=f"№{self.number}", fg="red")
+            self.name_label.config(text=self.display_text if self.display_text != str(self.number) else "", fg="red")
+        else:
+            self.number_label.config(text=self.display_text, fg="red")
+            
         logger.info('三秒变动模式：已定格最终结果')
         self.after(KEEP*1000, self.destroy)
 
 
     def show_result(self):
-        self.number_label.config(text=str(self.number),fg="red")
+        if self.name_label:
+            # 分别显示学号和姓名
+            self.number_label.config(text=f"№{self.number}", fg="red")
+            self.name_label.config(text=self.display_text if self.display_text != str(self.number) else "", fg="red")
+        else:
+            self.number_label.config(text=self.display_text, fg="red")
+            
         logger.info('直接显示模式：已显示结果')
         self.after(KEEP*1000, self.destroy)
 
@@ -510,8 +554,12 @@ def speak_number(number):
         return
         
     try:
-        # 构造叫号文本
-        speak_text = VOICE_TEMPLATE.format(str(number))
+        # 构造叫号文本 - 如果有学生姓名就叫姓名，否则叫学号
+        student_name = STUDENTS.get(number)
+        if student_name:
+            speak_text = f"请{student_name}同学回答问题"
+        else:
+            speak_text = VOICE_TEMPLATE.format(str(number))
         
         # Windows 7兼容的语音方法
         # 使用SAPI.SpVoice COM组件实现TTS
@@ -527,6 +575,12 @@ def speak_number(number):
         try:
             # 尝试使用powershell调用Add-Type方式
             import subprocess
+            student_name = STUDENTS.get(number)
+            if student_name:
+                speak_text = f"请{student_name}同学回答问题"
+            else:
+                speak_text = VOICE_TEMPLATE.format(str(number))
+                
             ps_command = f'''
             Add-Type -AssemblyName System.speech;
             $speak = New-Object System.Speech.Synthesis.SpeechSynthesizer;

@@ -6,6 +6,8 @@ import os
 import glob
 import psutil
 import time
+import pandas as pd
+import json
 
 
 class LauncherApp:
@@ -127,6 +129,14 @@ class LauncherApp:
         self.voice_template_var = tk.StringVar(value=self.config.get('lottery', 'voice_template', fallback='请{}号同学回答问题'))
         tk.Entry(voice_frame, textvariable=self.voice_template_var, width=20).pack(side="left")
 
+        # 学生名单导入区域
+        student_list_frame = ttk.LabelFrame(self.root, text="学生名单管理")
+        student_list_frame.pack(fill="both", expand="yes", padx=20, pady=10)
+
+        tk.Button(student_list_frame, text="导入学生名单(CSV/XLSX)", command=self.import_student_list).pack(pady=10)
+        tk.Label(student_list_frame, text="注意: CSV文件应包含'学号','姓名'列，Excel文件第一列为学号，第二列为姓名", 
+                 wraplength=400, justify="left").pack(pady=5)
+
         # 版本选择区域
         version_frame = ttk.LabelFrame(self.root, text="程序版本选择")
         version_frame.pack(fill="both", expand="yes", padx=20, pady=10)
@@ -205,6 +215,63 @@ class LauncherApp:
         if closed:
             time.sleep(1)
         return closed
+
+    def import_student_list(self):
+        """导入学生名单文件(CSV或XLSX)"""
+        file_path = filedialog.askopenfilename(
+            title="选择学生名单文件",
+            filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv"), ("All files", "*.*")]
+        )
+        
+        if not file_path:
+            return
+            
+        try:
+            # 读取文件
+            if file_path.endswith('.csv'):
+                df = pd.read_csv(file_path, encoding='utf-8')
+            else:
+                df = pd.read_excel(file_path)
+            
+            # 检查列名
+            if len(df.columns) < 2:
+                messagebox.showerror("错误", "文件至少需要两列（学号和姓名）")
+                return
+                
+            # 获取学号和姓名列
+            student_dict = {}
+            # 尝试识别列名
+            if '学号' in df.columns and '姓名' in df.columns:
+                number_col, name_col = '学号', '姓名'
+            elif 'number' in [col.lower() for col in df.columns] and 'name' in [col.lower() for col in df.columns]:
+                number_col = [col for col in df.columns if col.lower() == 'number'][0]
+                name_col = [col for col in df.columns if col.lower() == 'name'][0]
+            else:
+                # 默认使用前两列
+                number_col, name_col = df.columns[0], df.columns[1]
+            
+            # 构建字典
+            for _, row in df.iterrows():
+                try:
+                    number = int(row[number_col])
+                    name = str(row[name_col]).strip()
+                    if name:  # 只有姓名非空才添加
+                        student_dict[number] = name
+                except (ValueError, KeyError):
+                    continue
+            
+            if not student_dict:
+                messagebox.showerror("错误", "未能从文件中提取有效的学生信息")
+                return
+                
+            # 保存到JSON文件
+            with open('students.json', 'w', encoding='utf-8') as f:
+                json.dump(student_dict, f, ensure_ascii=False, indent=2)
+                
+            messagebox.showinfo("成功", f"成功导入{len(student_dict)}名学生信息")
+            
+        except Exception as e:
+            messagebox.showerror("错误", f"导入失败: {str(e)}")
 
     def run_program(self):
         """运行选中的程序版本"""
