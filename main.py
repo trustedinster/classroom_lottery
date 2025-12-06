@@ -549,38 +549,14 @@ def speak_number(number):
         else:
             speak_text = VOICE_TEMPLATE.format(str(number)+'号')
         
-        # Windows 7兼容的语音方法
-        # 使用SAPI.SpVoice COM组件实现TTS
-        import win32com.client
-        speaker = win32com.client.Dispatch("SAPI.SpVoice")
-        speaker.Rate = 0  # 语速 -10 到 10，默认为0
-        speaker.Volume = 100  # 音量 0 到 100，默认为100
-        speaker.Speak(speak_text)
+        # 使用pyttsx3库实现TTS功能
+        import pyttsx3
+        engine = pyttsx3.init()
+        engine.setProperty('rate', 200)  # 设置语速
+        engine.setProperty('volume', 1.0)  # 设置音量
+        engine.say(speak_text)
+        engine.runAndWait()
         logger.info(f'语音叫号成功: {speak_text}')
-    except ImportError:
-        # win32com不可用时的备选方案
-        logger.warning('win32com模块不可用，尝试使用其他TTS方法')
-        try:
-            # 尝试使用powershell调用Add-Type方式
-            import subprocess
-            student_name = STUDENTS.get(number)
-            if student_name:
-                speak_text = f"请{student_name}同学回答问题"
-            else:
-                speak_text = VOICE_TEMPLATE.format(str(number))
-                
-            ps_command = f'''
-            Add-Type -AssemblyName System.speech;
-            $speak = New-Object System.Speech.Synthesis.SpeechSynthesizer;
-            $speak.Rate = 0;
-            $speak.Volume = 100;
-            $speak.Speak('{speak_text}');
-            '''
-            subprocess.run(["powershell", "-Command", ps_command], 
-                          capture_output=True, text=True, timeout=10)
-            logger.info(f'通过PowerShell语音叫号成功: {speak_text}')
-        except Exception as e:
-            logger.error(f'PowerShell语音叫号失败: {str(e)}')
     except Exception as e:
         logger.error(f'语音叫号功能异常: {str(e)}')
 
