@@ -36,6 +36,13 @@ class LauncherApp:
         # 检查学生名单
         self.check_student_list()
 
+        # 检查守护进程
+        if not self.find_daemon_exe():
+            messagebox.showwarning(
+                "警告", 
+                "未找到守护进程(daemon.exe或daemon.py)，程序稳定性将无法保证"
+            )
+
     def load_config(self):
         """加载配置文件"""
         try:
@@ -209,23 +216,32 @@ class LauncherApp:
             messagebox.showerror("错误", f"保存配置失败: {e}")
 
     def is_lottery_running(self):
-        """检查是否有抽号程序正在运行"""
-        for proc in process_iter(['pid', 'name']):
+        """检查是否有抽号程序或守护进程正在运行"""
+        for proc in process_iter(['pid', 'name', 'cmdline']):
             try:
-                # 检查进程名是否包含"课堂抽号程序"
-                if "课堂抽号程序" in proc.info['name']:
+                proc_name = proc.info['name'].lower()
+                if ("课堂抽号程序" in proc_name or 
+                    "daemon.exe" in proc_name or 
+                    (proc_name == "python.exe" and any(
+                        "daemon.py" in cmdline for cmdline in proc.cmdline()
+                    ))):
                     return True
             except (NoSuchProcess, AccessDenied, ZombieProcess):
                 pass
         return False
 
     def close_lottery_processes(self):
-        """关闭所有正在运行的抽号程序"""
+        """关闭所有正在运行的抽号程序和守护进程"""
         closed = False
         for proc in process_iter(['pid', 'name']):
             try:
-                # 检查进程名是否包含"课堂抽号程序"
-                if "课堂抽号程序" in proc.info['name']:
+                proc_name = proc.info['name'].lower()
+                # 关闭主程序和守护进程
+                if ("课堂抽号程序" in proc_name or 
+                    "daemon.exe" in proc_name or 
+                    (proc_name == "python.exe" and any(
+                        "daemon.py" in cmdline for cmdline in proc.cmdline()
+                    ))):
                     proc.terminate()
                     closed = True
             except (NoSuchProcess, AccessDenied, ZombieProcess):
@@ -294,6 +310,17 @@ class LauncherApp:
         except Exception as e:
             messagebox.showerror("错误", f"导入失败: {str(e)}")
 
+    def find_daemon_exe(self):
+        """查找守护进程可执行文件"""
+        daemon_path = path.join('.', 'daemon.exe')
+        if path.exists(daemon_path):
+            return daemon_path
+        # 如果没有exe文件，尝试使用Python脚本
+        daemon_py = path.join('.', 'daemon.py')
+        if path.exists(daemon_py):
+            return ['python', daemon_py]
+        return None
+
     def run_program(self):
         """运行选中的程序版本"""
         # 先保存配置
@@ -308,9 +335,18 @@ class LauncherApp:
             messagebox.showerror("错误", "选择的程序版本不存在")
             return
 
+        # 查找守护进程
+        daemon_exe = self.find_daemon_exe()
+        if not daemon_exe:
+            messagebox.showerror("错误", "未找到守护进程(daemon.exe或daemon.py)")
+            return
+
         # 检查是否已经有抽号程序在运行
         if self.is_lottery_running():
-            result = messagebox.askokcancel("提示", "已经有一个抽号程序在运行，需要关闭它才能继续。点击确定关闭运行中的程序。")
+            result = messagebox.askokcancel(
+                "提示", 
+                "已经有一个抽号程序在运行，需要关闭它才能继续。点击确定关闭运行中的程序。"
+            )
             if result:
                 self.close_lottery_processes()
             else:
@@ -318,12 +354,10 @@ class LauncherApp:
 
         try:
             exe_path = self.exe_files[selected]['path']
-            # 通过命令行参数传递配置而不是依赖config.ini
             # 从组合框的值中提取模式数字
             mode_value = self.mode_var.get().split(' ')[0]
-
-            cmd = [
-                exe_path,
+            # 构建传递给主程序的参数
+            program_args = [
                 f"--min-number={self.min_var.get()}",
                 f"--max-number={self.max_var.get()}",
                 f"--delay={self.delay_var.get()}",
@@ -332,9 +366,15 @@ class LauncherApp:
                 f"--enable-voice={self.voice_var.get()}",
                 f"--voice-template={self.voice_template_var.get()}"
             ]
-            # 启动程序
+            # 构建守护进程命令
+            # 统一使用 "--" 分隔符区分参数，无论使用exe还是py形式的守护进程
+            if isinstance(daemon_exe, list):
+                cmd = daemon_exe + [exe_path, "--"] + program_args
+            else:
+                cmd = [daemon_exe, exe_path, "--"] + program_args
+            # 启动守护进程
             Popen(cmd, shell=True)
-            messagebox.showinfo("提示", f"正在启动 {selected}")
+            messagebox.showinfo("提示", f"正在启动 {selected} (守护进程)")
             # 启动成功后自动关闭启动器
             self.root.quit()
         except Exception as e:
