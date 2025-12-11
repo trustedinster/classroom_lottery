@@ -1,32 +1,49 @@
 name: Sync GitHub Release to Gitee
 
-# 触发条件：当 GitHub Release 被创建时自动触发
+# 触发条件：当 Release 被创建时自动触发
 on:
   release:
     types: [published]
 
 # 环境变量设置
 env:
-  # 项目名称
-  PROJECT_NAME: classroom_lottery
+  # 仓库信息
+  GITHUB_REPO: trustedinster/classroom_lottery
+  GITEE_OWNER: Bilibili-Supercmd
+  GITEE_REPO: classroom_lottery
+  # Git 用户配置
+  GIT_USER_NAME: BiliBili UP主Supercmd
+  GIT_USER_EMAIL: trustedinster@outlook.com
 
 jobs:
   sync-to-gitee:
-    # 使用 Node.js 环境，因为 gitee-release-cli 是 npm 包
     runs-on: ubuntu-latest
-
+    
     steps:
       # 1. 检出代码
       - name: Checkout code
         uses: actions/checkout@v4
-
-      # 2. 设置 Node.js 环境
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          fetch-depth: 0
 
-      # 3. 获取 GitHub Release 信息
+      # 2. 设置 Git 用户信息
+      - name: Configure Git
+        run: |
+          git config --global user.name "${{ env.GIT_USER_NAME }}"
+          git config --global user.email "${{ env.GIT_USER_EMAIL }}"
+
+      # 3. 同步代码到 Gitee
+      - name: Mirror GitHub to Gitee
+        uses: Yikun/hub-mirror-action@master
+        with:
+          src: github/${{ env.GITHUB_REPO }}
+          dst: gitee/${{ env.GITEE_OWNER }}/${{ env.GITEE_REPO }}
+          dst_key: ${{ secrets.RSA_PRIVATE_KEY }}
+          dst_token: ${{ secrets.GITEE_TOKEN }}
+          force_update: true
+          static_list: "classroom_lottery"
+
+      # 4. 获取 GitHub Release 信息
       - name: Get Release Info
         id: get_release
         uses: actions/github-script@v6
@@ -75,42 +92,78 @@ jobs:
               body: release.data.body,
               draft: release.data.draft,
               prerelease: release.data.prerelease,
-              assets_dir: assetsDir
+              assets_dir: assetsDir,
+              target_commitish: release.data.target_commitish
             }
-
-      # 4. 安装 gitee-release-cli 工具
-      - name: Install gitee-release-cli
-        run: npm install gitee-release-cli
 
       # 5. 创建 Gitee Release
       - name: Create Gitee Release
+        id: create_release
         env:
-          # 从 GitHub Secrets 读取 GITEE_TOKEN
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
-          # 配置 accessToken
-          npx gitee-release-cli config set accessToken $GITEE_TOKEN
+          # 准备请求数据
+          RELEASE_DATA=$(jq -n \
+            --arg tag_name "${{ steps.get_release.outputs.tag_name }}" \
+            --arg name "${{ steps.get_release.outputs.name }}" \
+            --arg body "${{ steps.get_release.outputs.body }}" \
+            --arg target_commitish "${{ steps.get_release.outputs.target_commitish }}" \
+            --argjson prerelease "${{ steps.get_release.outputs.prerelease }}" \
+            '{
+              tag_name: $tag_name,
+              name: $name,
+              body: $body,
+              target_commitish: $target_commitish,
+              prerelease: $prerelease
+            }')
 
-          # 创建发行版
-          # 使用从 GitHub Release 获取的标题和说明
-          # 支持预发行版本（prerelease）
-          npx gitee-release-cli release create \
-            --owner "${{ github.repository_owner }}" \
-            --repo "${{ env.PROJECT_NAME }}" \
-            --tag "${{ steps.get_release.outputs.tag_name }}" \
-            --name "${{ steps.get_release.outputs.name }}" \
-            --body "${{ steps.get_release.outputs.body }}" \
-            --assets-dir "${{ steps.get_release.outputs.assets_dir }}" \
-            --prerelease ${{ steps.get_release.outputs.prerelease }}
+          # 发送请求创建 Release
+          RESPONSE=$(curl -s -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: token $GITEE_TOKEN" \
+            -d "$RELEASE_DATA" \
+            "https://gitee.com/api/v5/repos/${{ env.GITEE_OWNER }}/${{ env.GITEE_REPO }}/releases")
 
-      # 6. 清理临时文件
+          # 检查响应并提取 Release ID
+          if echo "$RESPONSE" | jq -e 'has("id")' > /dev/null; then
+            RELEASE_ID=$(echo "$RESPONSE" | jq -r '.id')
+            echo "release_id=$RELEASE_ID" >> $GITHUB_OUTPUT
+          else
+            echo "创建 Release 失败: $RESPONSE"
+            exit 1
+          fi
+
+      # 6. 上传附件到 Gitee
+      - name: Upload Assets to Gitee
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 获取所有附件文件
+          for file in "${{ steps.get_release.outputs.assets_dir }}"/*; do
+            if [ -f "$file" ]; then
+              # 使用 curl 上传文件
+              RESPONSE=$(curl -s -X POST \
+                -H "Authorization: token $GITEE_TOKEN" \
+                -F "file=@$file" \
+                "https://gitee.com/api/v5/repos/${{ env.GITEE_OWNER }}/${{ env.GITEE_REPO }}/releases/${{ steps.create_release.outputs.release_id }}/attach_files")
+
+              # 检查上传结果
+              if ! echo "$RESPONSE" | jq -e 'has("id")' > /dev/null; then
+                echo "上传文件失败: $file"
+                echo "响应: $RESPONSE"
+                exit 1
+              fi
+            fi
+          done
+
+      # 7. 清理临时文件
       - name: Cleanup
         if: always()
         run: |
           # 清理下载的附件
           rm -rf assets
 
-      # 7. 错误处理和重试机制
+      # 8. 错误处理
       - name: Error Handling
         if: failure()
         uses: actions/github-script@v6
