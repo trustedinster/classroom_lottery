@@ -34,28 +34,29 @@ jobs:
     - name: Process dist directory structure
       run: |
         # 创建临时目录
-        mkdir temp_dist
+        New-Item -ItemType Directory -Path "temp_dist"
         
         # 复制所有 _internal 文件夹到临时目录
-        for /r %%i in (dist\*_internal) do (
-          xcopy /E /I /Y "%%i" "temp_dist\%%~nxi"
-        )
+        Get-ChildItem -Path "dist\*_internal" -Recurse | ForEach-Object {
+          $targetPath = "temp_dist\$($_.Name)"
+          xcopy /E /I /Y $_.FullName $targetPath
+        }
         
         # 复制 assets 文件夹到临时目录
-        if exist "dist\assets" (
+        if (Test-Path "dist\assets") {
           xcopy /E /I /Y "dist\assets" "temp_dist\assets"
-        )
+        }
         
         # 复制所有 exe 文件到临时目录
-        for /r %%i in (dist\*.exe) do (
-          copy /Y "%%i" "temp_dist\"
-        )
+        Get-ChildItem -Path "dist\*.exe" | ForEach-Object {
+          copy /Y $_.FullName "temp_dist\"
+        }
         
         # 删除原有的 dist 目录
-        rmdir /S /Q dist
+        Remove-Item -Path "dist" -Recurse -Force
         
         # 重命名临时目录为 dist
-        rename temp_dist dist
+        Rename-Item -Path "temp_dist" -NewName "dist"
         
     - name: Create zip archive
       run: |
