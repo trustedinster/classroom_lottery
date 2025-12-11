@@ -121,7 +121,6 @@ a_launcher = Analysis(
     pathex=[os.getcwd()],
     binaries=[],
     datas=[
-        ('config.ini', '.'),
         ('assets/*', 'assets'),
     ],
     hiddenimports=[
