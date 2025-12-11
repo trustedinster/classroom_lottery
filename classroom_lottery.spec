@@ -26,7 +26,6 @@ a_main = Analysis(
     datas=[
         ('assets/icon.ico', 'assets'),
         ('assets/rise_enable.wav', 'assets'),
-        ('students.json', '.') if os.path.exists('students.json') else None,
     ],
     hiddenimports=[
         'PySide2.QtCore',
