@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - '*'
+
+jobs:
+  build:
+    runs-on: windows-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python 3.8.6
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.8.6
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Install PyInstaller
+      run: |
+        pip install pyinstaller
+        
+    - name: Build with PyInstaller
+      run: |
+        pyinstaller classroom_lottery.spec
+        
+    - name: Process dist directory structure
+      run: |
+        # 创建临时目录
+        mkdir temp_dist
+        
+        # 复制所有 _internal 文件夹到临时目录
+        for /r %%i in (dist\*_internal) do (
+          xcopy /E /I /Y "%%i" "temp_dist\%%~nxi"
+        )
+        
+        # 复制 assets 文件夹到临时目录
+        if exist "dist\assets" (
+          xcopy /E /I /Y "dist\assets" "temp_dist\assets"
+        )
+        
+        # 复制所有 exe 文件到临时目录
+        for /r %%i in (dist\*.exe) do (
+          copy /Y "%%i" "temp_dist\"
+        )
+        
+        # 删除原有的 dist 目录
+        rmdir /S /Q dist
+        
+        # 重命名临时目录为 dist
+        rename temp_dist dist
+        
+    - name: Create zip archive
+      run: |
+        # 获取 tag 名称
+        $tag = "${{ github.ref }}".Substring("${{ github.ref }}".LastIndexOf('/') + 1)
+        
+        # 创建 zip 文件
+        Compress-Archive -Path dist\* -DestinationPath "classroom_lottery_$tag.zip"
+        
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: classroom_lottery_*.zip
+      env:
+        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
