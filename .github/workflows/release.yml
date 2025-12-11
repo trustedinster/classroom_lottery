@@ -8,48 +8,48 @@ on:
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      
+
     - name: Set up Python 3.8.6
       uses: actions/setup-python@v4
       with:
         python-version: 3.8.6
-        
+
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
-        
+
     - name: Install PyInstaller
       run: |
         pip install pyinstaller
-        
+
     - name: Build with PyInstaller
       run: |
         pyinstaller classroom_lottery.spec
-        
+
     - name: Process dist directory structure
       run: |
         # 创建临时目录
-        New-Item -ItemType Directory -Path "temp_dist"
+        New-Item -ItemType Directory -Path "temp_dist" -Force
         
         # 复制所有 _internal 文件夹到临时目录
-        Get-ChildItem -Path "dist\*_internal" -Recurse | ForEach-Object {
-          $targetPath = "temp_dist\$($_.Name)"
-          xcopy /E /I /Y $_.FullName $targetPath
+        Get-ChildItem -Path "dist" -Filter "*_internal" -Recurse | ForEach-Object {
+            $targetPath = Join-Path "temp_dist" $_.Name
+            Copy-Item -Path $_.FullName -Destination $targetPath -Recurse -Force
         }
         
         # 复制 assets 文件夹到临时目录
         if (Test-Path "dist\assets") {
-          xcopy /E /I /Y "dist\assets" "temp_dist\assets"
+            Copy-Item -Path "dist\assets" -Destination "temp_dist\assets" -Recurse -Force
         }
         
         # 复制所有 exe 文件到临时目录
-        Get-ChildItem -Path "dist\*.exe" | ForEach-Object {
-          copy /Y $_.FullName "temp_dist\"
+        Get-ChildItem -Path "dist" -Filter "*.exe" -Recurse | ForEach-Object {
+            Copy-Item -Path $_.FullName -Destination "temp_dist" -Force
         }
         
         # 删除原有的 dist 目录
@@ -57,18 +57,18 @@ jobs:
         
         # 重命名临时目录为 dist
         Rename-Item -Path "temp_dist" -NewName "dist"
-        
+
     - name: Create zip archive
       run: |
         # 获取 tag 名称
         $tag = "${{ github.ref }}".Substring("${{ github.ref }}".LastIndexOf('/') + 1)
         
         # 创建 zip 文件
-        Compress-Archive -Path dist\* -DestinationPath "classroom_lottery_$tag.zip"
-        
+        Compress-Archive -Path "dist\*" -DestinationPath "classroom_lottery_$tag.zip"
+
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
         files: classroom_lottery_*.zip
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
