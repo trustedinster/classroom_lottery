@@ -38,14 +38,14 @@ jobs:
               repo: context.repo.repo,
               release_id: context.payload.release.id
             });
-            
+
             // 获取所有 Release 附件
             const assets = await github.rest.repos.listReleaseAssets({
               owner: context.repo.owner,
               repo: context.repo.repo,
               release_id: context.payload.release.id
             });
-            
+
             // 下载所有附件
             const fs = require('fs');
             const path = require('path');
@@ -53,7 +53,7 @@ jobs:
             if (!fs.existsSync(assetsDir)) {
               fs.mkdirSync(assetsDir);
             }
-            
+
             for (const asset of assets.data) {
               const response = await github.rest.repos.getReleaseAsset({
                 owner: context.repo.owner,
@@ -63,11 +63,11 @@ jobs:
                   Accept: 'application/octet-stream'
                 }
               });
-              
+
               const assetPath = path.join(assetsDir, asset.name);
               fs.writeFileSync(assetPath, Buffer.from(response.data));
             }
-            
+
             // 返回 Release 信息
             return {
               tag_name: release.data.tag_name,
@@ -80,7 +80,7 @@ jobs:
 
       # 4. 安装 gitee-release-cli 工具
       - name: Install gitee-release-cli
-        run: npm install -g gitee-release-cli
+        run: npm install gitee-release-cli
 
       # 5. 创建 Gitee Release
       - name: Create Gitee Release
@@ -89,12 +89,12 @@ jobs:
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           # 配置 accessToken
-          gitee-release-cli config set accessToken $GITEE_TOKEN
-          
+          npx gitee-release-cli config set accessToken $GITEE_TOKEN
+
           # 创建发行版
           # 使用从 GitHub Release 获取的标题和说明
           # 支持预发行版本（prerelease）
-          gitee-release-cli release create \
+          npx gitee-release-cli release create \
             --owner "${{ github.repository_owner }}" \
             --repo "${{ env.PROJECT_NAME }}" \
             --tag "${{ steps.get_release.outputs.tag_name }}" \

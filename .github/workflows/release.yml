@@ -37,9 +37,13 @@ jobs:
         New-Item -ItemType Directory -Path "temp_dist" -Force
         
         # 复制所有 _internal 文件夹到临时目录
+        $internalTarget = Join-Path "temp_dist" "_internal"
+        New-Item -ItemType Directory -Path $internalTarget -Force
         Get-ChildItem -Path "dist" -Filter "*_internal" -Recurse | ForEach-Object {
-            $targetPath = Join-Path "temp_dist" $_.Name
-            Copy-Item -Path $_.FullName -Destination $targetPath -Recurse -Force
+            # 获取 _internal 目录下的所有内容并复制到统一的目标目录
+            Get-ChildItem -Path $_.FullName | ForEach-Object {
+                Copy-Item -Path $_.FullName -Destination $internalTarget -Recurse -Force
+            }
         }
         
         # 复制 assets 文件夹到临时目录
