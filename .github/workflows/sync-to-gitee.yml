@@ -1,0 +1,125 @@
+name: Sync GitHub Release to Gitee
+
+# 触发条件：当 GitHub Release 被创建时自动触发
+on:
+  release:
+    types: [published]
+
+# 环境变量设置
+env:
+  # 项目名称
+  PROJECT_NAME: classroom_lottery
+
+jobs:
+  sync-to-gitee:
+    # 使用 Node.js 环境，因为 gitee-release-cli 是 npm 包
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出代码
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2. 设置 Node.js 环境
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      # 3. 获取 GitHub Release 信息
+      - name: Get Release Info
+        id: get_release
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // 获取 Release 信息
+            const release = await github.rest.repos.getRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id
+            });
+            
+            // 获取所有 Release 附件
+            const assets = await github.rest.repos.listReleaseAssets({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              release_id: context.payload.release.id
+            });
+            
+            // 下载所有附件
+            const fs = require('fs');
+            const path = require('path');
+            const assetsDir = path.join(process.cwd(), 'assets');
+            if (!fs.existsSync(assetsDir)) {
+              fs.mkdirSync(assetsDir);
+            }
+            
+            for (const asset of assets.data) {
+              const response = await github.rest.repos.getReleaseAsset({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                asset_id: asset.id,
+                headers: {
+                  Accept: 'application/octet-stream'
+                }
+              });
+              
+              const assetPath = path.join(assetsDir, asset.name);
+              fs.writeFileSync(assetPath, Buffer.from(response.data));
+            }
+            
+            // 返回 Release 信息
+            return {
+              tag_name: release.data.tag_name,
+              name: release.data.name,
+              body: release.data.body,
+              draft: release.data.draft,
+              prerelease: release.data.prerelease,
+              assets_dir: assetsDir
+            }
+
+      # 4. 安装 gitee-release-cli 工具
+      - name: Install gitee-release-cli
+        run: npm install -g gitee-release-cli
+
+      # 5. 创建 Gitee Release
+      - name: Create Gitee Release
+        env:
+          # 从 GitHub Secrets 读取 GITEE_TOKEN
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          # 配置 accessToken
+          gitee-release-cli config set accessToken $GITEE_TOKEN
+          
+          # 创建发行版
+          # 使用从 GitHub Release 获取的标题和说明
+          # 支持预发行版本（prerelease）
+          gitee-release-cli release create \
+            --owner "${{ github.repository_owner }}" \
+            --repo "${{ env.PROJECT_NAME }}" \
+            --tag "${{ steps.get_release.outputs.tag_name }}" \
+            --name "${{ steps.get_release.outputs.name }}" \
+            --body "${{ steps.get_release.outputs.body }}" \
+            --assets-dir "${{ steps.get_release.outputs.assets_dir }}" \
+            --prerelease ${{ steps.get_release.outputs.prerelease }}
+
+      # 6. 清理临时文件
+      - name: Cleanup
+        if: always()
+        run: |
+          # 清理下载的附件
+          rm -rf assets
+
+      # 7. 错误处理和重试机制
+      - name: Error Handling
+        if: failure()
+        uses: actions/github-script@v6
+        with:
+          script: |
+            // 发送错误通知
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '❌ 同步 Release 到 Gitee 失败，请检查错误日志。'
+            })
