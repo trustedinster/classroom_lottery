@@ -26,7 +26,6 @@ a_main = Analysis(
     datas=[
         ('assets/icon.ico', 'assets'),
         ('assets/rise_enable.wav', 'assets'),
-        ('config.ini', '.'),
         ('students.json', '.') if os.path.exists('students.json') else None,
     ],
     hiddenimports=[
