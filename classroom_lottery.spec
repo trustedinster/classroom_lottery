@@ -326,7 +326,6 @@ a_update = Analysis(
         'winsound',
         'keyboard',
         'configparser',
-        'random',
         'PIL',
     ],
     win_no_prefer_redirects=False,
