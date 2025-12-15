@@ -61,7 +61,7 @@ jobs:
           gitee_owner: ${{ env.GITEE_OWNER }}
           gitee_repo: ${{ env.GITEE_REPO }}
           gitee_tag_name: ${{ github.ref_name }}
-          gitee_release_name: ${{ github.event.release.title }}
+          gitee_release_name: ${{ github.event.release.name }}
           gitee_release_body: ${{ github.event.release.body }}
           gitee_target_commitish: master
           gitee_upload_retry_times: 3
