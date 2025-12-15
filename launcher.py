@@ -1,42 +1,22 @@
-import logging
+import sys
 import os
-from datetime import datetime
-from tkinter import ttk, messagebox, filedialog, Tk, StringVar, Label, Frame, Entry, Checkbutton, Button, Radiobutton
 from configparser import ConfigParser
 from subprocess import Popen
-from os import path
 from glob import glob
-from psutil import NoSuchProcess, process_iter, AccessDenied, ZombieProcess
-from time import sleep
-from pandas import read_csv, read_excel
-from json import load, dump
+import json
+
+from PySide2.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
+                               QLabel, QLineEdit, QPushButton, QRadioButton, QCheckBox,
+                               QComboBox, QFileDialog, QMessageBox, QGroupBox, QButtonGroup)
+from PySide2.QtCore import Qt
 
 
-def setup_logging():
-    """设置日志记录"""
-    log_dir = 'logs'
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
-    log_file = os.path.join(log_dir, f'launcher_{datetime.now().strftime("%Y%m%d")}.log')
-    logging.basicConfig(
-        level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
-        handlers=[
-            logging.FileHandler(log_file, encoding='utf-8'),
-        ]
-    )
-    return logging.getLogger(__name__)
-
-
-class LauncherApp:
-    def __init__(self, root):
-        self.logger = setup_logging()
-        self.logger.info("启动器初始化开始")
-        
-        self.root = root
-        self.root.title("课堂抽号程序启动器")
-        self.root.geometry("500x600")  # 增加窗口高度
-        self.root.resizable(False, False)
+class LauncherApp(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("课堂抽号程序启动器")
+        self.setGeometry(100, 100, 500, 600)
+        self.setFixedSize(500, 600)
 
         # 读取配置
         self.config = ConfigParser()
@@ -45,54 +25,48 @@ class LauncherApp:
 
         # 查找可用的程序版本
         self.exe_files = self.find_exe_files()
-        self.selected_version = StringVar()
+        self.selected_version = None
 
         # 创建界面
-        self.create_widgets()
+        self.init_ui()
 
         # 设置默认选中的版本
         if self.exe_files:
             latest_version = self.get_latest_version()
-            self.selected_version.set(latest_version)
+            self.selected_version = latest_version
 
         # 检查学生名单
         self.check_student_list()
 
         # 检查守护进程
         if not self.find_daemon_exe():
-            messagebox.showwarning(
-                "警告", 
+            QMessageBox.warning(
+                self,
+                "警告",
                 "未找到守护进程(daemon.exe或daemon.py)，程序稳定性将无法保证"
             )
-            self.logger.warning("未找到守护进程(daemon.exe或daemon.py)")
-
-        self.logger.info("启动器初始化完成")
 
     def load_config(self):
         """加载配置文件"""
         try:
             self.config.read(self.config_file, encoding='utf-8')
-            self.logger.info(f"配置文件加载成功: {self.config_file}")
         except Exception as e:
-            self.logger.error(f"无法读取配置文件: {e}")
-            messagebox.showerror("错误", f"无法读取配置文件: {e}")
+            QMessageBox.critical(self, "错误", f"无法读取配置文件: {e}")
 
     def find_exe_files(self):
         """查找当前目录下所有的课堂抽号程序exe文件"""
-        exe_pattern = path.join('.', '课堂抽号程序*.exe')
+        exe_pattern = os.path.join('.', '课堂抽号程序*.exe')
         exe_files = glob(exe_pattern)
         # 提取版本号信息
         versions = {}
         for exe in exe_files:
-            basename = path.basename(exe)
+            basename = os.path.basename(exe)
             if basename == '课堂抽号程序.exe':
                 versions[basename] = {'version': '1.0', 'path': exe}
             else:
                 # 提取版本号，例如 课堂抽号程序2.0.exe -> 2.0
                 version = basename.replace('课堂抽号程序', '').replace('.exe', '')
                 versions[basename] = {'version': version, 'path': exe}
-        
-        self.logger.info(f"找到 {len(versions)} 个可执行文件")
         return versions
 
     def get_latest_version(self):
@@ -103,121 +77,162 @@ class LauncherApp:
         # 简单排序，找出最大的版本号
         versions = [(v['version'], name) for name, v in self.exe_files.items()]
         versions.sort(key=lambda x: x[0], reverse=True)
-        self.logger.info(f"最新版本: {versions[0][1]}")
         return versions[0][1]
 
     def check_student_list(self):
         """检查是否存在学生名单"""
         try:
-            if path.exists('students.json'):
+            if os.path.exists('students.json'):
                 with open('students.json', 'r', encoding='utf-8') as f:
-                    students = load(f)
+                    students = json.load(f)
                 # 更新显示
-                self.student_info_label.config(text=f"已成功加载{len(students)}名学生的信息")
-                self.logger.info(f"已成功加载 {len(students)} 名学生的信息")
+                self.student_info_label.setText(f"已成功加载{len(students)}名学生的信息")
                 return True
         except Exception as e:
-            self.logger.error(f"加载学生名单时出错: {e}")
             pass
-        self.student_info_label.config(text="未加载学生名单")
-        self.logger.info("未找到学生名单")
+        self.student_info_label.setText("未加载学生名单")
         return False
 
-    def create_widgets(self):
+    def init_ui(self):
+        # 创建中央部件
+        central_widget = QWidget()
+        self.setCentralWidget(central_widget)
+
+        # 创建主布局
+        main_layout = QVBoxLayout(central_widget)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+
         # 标题
-        title_label = Label(self.root, text="课堂抽号程序启动器", font=("微软雅黑", 16, "bold"))
-        title_label.pack(pady=10)
+        title_label = QLabel("课堂抽号程序启动器")
+        title_label.setAlignment(Qt.AlignCenter)
+        title_label.setStyleSheet("font-size: 16pt; font-weight: bold; font-family: 微软雅黑;")
+        main_layout.addWidget(title_label)
 
         # 配置编辑区域
-        config_frame = ttk.LabelFrame(self.root, text="配置设置")
-        config_frame.pack(fill="both", expand="yes", padx=20, pady=10)
+        config_group = QGroupBox("配置设置")
+        config_layout = QVBoxLayout(config_group)
 
         # min_number
-        min_frame = Frame(config_frame)
-        min_frame.pack(fill="x", padx=10, pady=5)
-        Label(min_frame, text="最小号码:", width=15, anchor="w").pack(side="left")
-        self.min_var = StringVar(value=self.config.get('lottery', 'min_number', fallback='1'))
-        Entry(min_frame, textvariable=self.min_var, width=20).pack(side="left")
+        min_layout = QHBoxLayout()
+        min_layout.addWidget(QLabel("最小号码:"), 1)
+        self.min_edit = QLineEdit()
+        self.min_edit.setText(self.config.get('lottery', 'min_number', fallback='1'))
+        self.min_edit.setFixedWidth(100)
+        min_layout.addWidget(self.min_edit)
+        config_layout.addLayout(min_layout)
 
         # max_number
-        max_frame = Frame(config_frame)
-        max_frame.pack(fill="x", padx=10, pady=5)
-        Label(max_frame, text="最大号码:", width=15, anchor="w").pack(side="left")
-        self.max_var = StringVar(value=self.config.get('lottery', 'max_number', fallback='48'))
-        Entry(max_frame, textvariable=self.max_var, width=20).pack(side="left")
+        max_layout = QHBoxLayout()
+        max_layout.addWidget(QLabel("最大号码:"), 1)
+        self.max_edit = QLineEdit()
+        self.max_edit.setText(self.config.get('lottery', 'max_number', fallback='48'))
+        self.max_edit.setFixedWidth(100)
+        max_layout.addWidget(self.max_edit)
+        config_layout.addLayout(max_layout)
 
         # delay
-        delay_frame = Frame(config_frame)
-        delay_frame.pack(fill="x", padx=10, pady=5)
-        Label(delay_frame, text="延迟(秒):", width=15, anchor="w").pack(side="left")
-        self.delay_var = StringVar(value=self.config.get('lottery', 'delay', fallback='1'))
-        Entry(delay_frame, textvariable=self.delay_var, width=20).pack(side="left")
+        delay_layout = QHBoxLayout()
+        delay_layout.addWidget(QLabel("延迟(秒):"), 1)
+        self.delay_edit = QLineEdit()
+        self.delay_edit.setText(self.config.get('lottery', 'delay', fallback='1'))
+        self.delay_edit.setFixedWidth(100)
+        delay_layout.addWidget(self.delay_edit)
+        config_layout.addLayout(delay_layout)
 
         # keep
-        keep_frame = Frame(config_frame)
-        keep_frame.pack(fill="x", padx=10, pady=5)
-        Label(keep_frame, text="保持时间(秒):", width=15, anchor="w").pack(side="left")
-        self.keep_var = StringVar(value=self.config.get('lottery', 'keep', fallback='3'))
-        Entry(keep_frame, textvariable=self.keep_var, width=20).pack(side="left")
+        keep_layout = QHBoxLayout()
+        keep_layout.addWidget(QLabel("保持时间(秒):"), 1)
+        self.keep_edit = QLineEdit()
+        self.keep_edit.setText(self.config.get('lottery', 'keep', fallback='3'))
+        self.keep_edit.setFixedWidth(100)
+        keep_layout.addWidget(self.keep_edit)
+        config_layout.addLayout(keep_layout)
 
         # 学生讲题模式
-        mode_frame = Frame(config_frame)
-        mode_frame.pack(fill="x", padx=10, pady=5)
-        Label(mode_frame, text="抽取模式:", width=15, anchor="w").pack(side="left")
-        self.mode_var = StringVar(value=self.config.get('lottery', 'student_mode', fallback='0'))
-        mode_combo = ttk.Combobox(mode_frame, textvariable=self.mode_var, width=17)
-        mode_combo['values'] = [('0 - 全随机模式'), ('1 - 学生讲题模式(正序)'), ('2 - 学生讲题模式(倒序)')]
-        mode_combo['state'] = 'readonly'
-        # 设置默认显示值
+        mode_layout = QHBoxLayout()
+        mode_layout.addWidget(QLabel("抽取模式:"), 1)
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItem("0 - 全随机模式", "0")
+        self.mode_combo.addItem("1 - 学生讲题模式(正序)", "1")
+        self.mode_combo.addItem("2 - 学生讲题模式(倒序)", "2")
         current_mode = self.config.get('lottery', 'student_mode', fallback='0')
-        mode_map = {'0': '0 - 全随机模式', '1': '1 - 学生讲题模式(正序)', '2': '2 - 学生讲题模式(倒序)'}
-        mode_combo.set(mode_map.get(current_mode, '0 - 全随机模式'))
-        mode_combo.pack(side="left")
+        index = self.mode_combo.findData(current_mode)
+        if index >= 0:
+            self.mode_combo.setCurrentIndex(index)
+        self.mode_combo.setFixedWidth(200)
+        mode_layout.addWidget(self.mode_combo)
+        config_layout.addLayout(mode_layout)
 
         # 语音叫号设置
-        voice_frame = Frame(config_frame)
-        voice_frame.pack(fill="x", padx=10, pady=5)
-        Label(voice_frame, text="启用语音:", width=15, anchor="w").pack(side="left")
-        self.voice_var = StringVar(value=self.config.get('lottery', 'enable_voice', fallback='1'))
-        Checkbutton(voice_frame, variable=self.voice_var, onvalue='1', offvalue='0').pack(side="left")
+        voice_layout = QHBoxLayout()
+        self.voice_checkbox = QCheckBox("启用语音:")
+        enable_voice = self.config.get('lottery', 'enable_voice', fallback='1')
+        self.voice_checkbox.setChecked(enable_voice == '1')
+        voice_layout.addWidget(self.voice_checkbox)
 
-        Label(voice_frame, text="叫号模板:", width=15, anchor="w").pack(side="left")
-        self.voice_template_var = StringVar(value=self.config.get('lottery', 'voice_template', fallback='请{}号同学回答问题'))
-        Entry(voice_frame, textvariable=self.voice_template_var, width=20).pack(side="left")
+        voice_layout.addWidget(QLabel("叫号模板:"))
+        self.voice_template_edit = QLineEdit()
+        self.voice_template_edit.setText(self.config.get('lottery', 'voice_template', fallback='请{}号同学回答问题'))
+        voice_layout.addWidget(self.voice_template_edit)
+        config_layout.addLayout(voice_layout)
+
+        main_layout.addWidget(config_group)
 
         # 学生名单导入区域
-        student_list_frame = ttk.LabelFrame(self.root, text="学生名单管理")
-        student_list_frame.pack(fill="both", expand="yes", padx=20, pady=10)
+        student_group = QGroupBox("学生名单管理")
+        student_layout = QVBoxLayout(student_group)
 
-        Button(student_list_frame, text="导入学生名单(CSV/XLSX)", command=self.import_student_list).pack(pady=5)
+        import_button = QPushButton("导入学生名单(CSV/XLSX)")
+        import_button.clicked.connect(self.import_student_list)
+        student_layout.addWidget(import_button)
+
         # 添加学生信息显示标签
-        self.student_info_label = Label(student_list_frame, text="未加载学生名单")
-        self.student_info_label.pack(pady=5)
-        Label(student_list_frame, text="注意: CSV文件应包含'学号','姓名'列，Excel文件第一列为学号，第二列为姓名",
-                 wraplength=400, justify="left").pack(pady=5)
+        self.student_info_label = QLabel("未加载学生名单")
+        student_layout.addWidget(self.student_info_label)
+
+        note_label = QLabel("注意: CSV文件应包含'学号','姓名'列，Excel文件第一列为学号，第二列为姓名")
+        note_label.setWordWrap(True)
+        student_layout.addWidget(note_label)
+
+        main_layout.addWidget(student_group)
 
         # 版本选择区域
-        version_frame = ttk.LabelFrame(self.root, text="程序版本选择")
-        version_frame.pack(fill="both", expand="yes", padx=20, pady=10)
+        version_group = QGroupBox("程序版本选择")
+        version_layout = QVBoxLayout(version_group)
 
+        self.version_group = QButtonGroup()
         if self.exe_files:
             for name in self.exe_files.keys():
-                Radiobutton(
-                    version_frame,
-                    text=name,
-                    variable=self.selected_version,
-                    value=name
-                ).pack(anchor="w", padx=10, pady=2)
+                radio = QRadioButton(name)
+                if self.selected_version and name == self.selected_version:
+                    radio.setChecked(True)
+                self.version_group.addButton(radio)
+                version_layout.addWidget(radio)
         else:
-            Label(version_frame, text="未找到可执行文件").pack(padx=10, pady=10)
+            version_layout.addWidget(QLabel("未找到可执行文件"))
+
+        main_layout.addWidget(version_group)
 
         # 按钮区域
-        button_frame = Frame(self.root)
-        button_frame.pack(pady=20)
+        button_layout = QHBoxLayout()
 
-        Button(button_frame, text="保存配置", command=self.save_config, width=12).pack(side="left", padx=10)
-        Button(button_frame, text="运行程序", command=self.run_program, width=12).pack(side="left", padx=10)
-        Button(button_frame, text="退出", command=self.root.quit, width=12).pack(side="left", padx=10)
+        save_button = QPushButton("保存配置")
+        save_button.clicked.connect(self.save_config)
+        save_button.setFixedWidth(100)
+        button_layout.addWidget(save_button)
+
+        run_button = QPushButton("运行程序")
+        run_button.clicked.connect(self.run_program)
+        run_button.setFixedWidth(100)
+        button_layout.addWidget(run_button)
+
+        exit_button = QPushButton("退出")
+        exit_button.clicked.connect(self.close)
+        exit_button.setFixedWidth(100)
+        button_layout.addWidget(exit_button)
+
+        main_layout.addLayout(button_layout)
 
     def save_config(self):
         """保存配置到文件"""
@@ -226,91 +241,104 @@ class LauncherApp:
             if not self.config.has_section('lottery'):
                 self.config.add_section('lottery')
 
-            self.config.set('lottery', 'min_number', self.min_var.get())
-            self.config.set('lottery', 'max_number', self.max_var.get())
-            self.config.set('lottery', 'delay', self.delay_var.get())
-            self.config.set('lottery', 'keep', self.keep_var.get())
+            self.config.set('lottery', 'min_number', self.min_edit.text())
+            self.config.set('lottery', 'max_number', self.max_edit.text())
+            self.config.set('lottery', 'delay', self.delay_edit.text())
+            self.config.set('lottery', 'keep', self.keep_edit.text())
 
             # 保存学生讲题模式配置
-            # 从组合框的值中提取模式数字
-            mode_value = self.mode_var.get().split(' ')[0]
+            mode_value = self.mode_combo.currentData()
             self.config.set('lottery', 'student_mode', mode_value)
 
             # 保存语音叫号配置
-            self.config.set('lottery', 'enable_voice', self.voice_var.get())
-            self.config.set('lottery', 'voice_template', self.voice_template_var.get())
+            self.config.set('lottery', 'enable_voice', '1' if self.voice_checkbox.isChecked() else '0')
+            self.config.set('lottery', 'voice_template', self.voice_template_edit.text())
 
             # 写入文件
             with open(self.config_file, 'w', encoding='utf-8') as configfile:
                 self.config.write(configfile)
 
-            self.logger.info("配置保存成功")
-            messagebox.showinfo("成功", "配置已保存")
+            QMessageBox.information(self, "成功", "配置已保存")
         except Exception as e:
-            self.logger.error(f"保存配置失败: {e}")
-            messagebox.showerror("错误", f"保存配置失败: {e}")
+            QMessageBox.critical(self, "错误", f"保存配置失败: {e}")
 
     def is_lottery_running(self):
         """检查是否有抽号程序或守护进程正在运行"""
-        for proc in process_iter(['pid', 'name', 'cmdline']):
-            try:
-                proc_name = proc.info['name'].lower()
-                if ("课堂抽号程序" in proc_name or 
-                    "daemon.exe" in proc_name or 
-                    (proc_name == "python.exe" and any(
-                        "daemon.py" in cmdline for cmdline in proc.cmdline()
-                    ))):
-                    self.logger.info(f"检测到正在运行的进程: {proc_name}")
-                    return True
-            except (NoSuchProcess, AccessDenied, ZombieProcess):
-                pass
+        try:
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name', 'cmdline']):
+                try:
+                    proc_name = proc.info['name'].lower()
+                    cmdline = proc.info.get('cmdline', [])
+                    if ("课堂抽号程序" in proc_name or
+                            "daemon.exe" in proc_name or
+                            (proc_name == "python.exe" and any(
+                                "daemon.py" in arg for arg in cmdline
+                            ))):
+                        return True
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+        except ImportError:
+            # 如果没有安装psutil，则跳过检查
+            pass
         return False
 
     def close_lottery_processes(self):
         """关闭所有正在运行的抽号程序和守护进程"""
         closed = False
-        for proc in process_iter(['pid', 'name']):
-            try:
-                proc_name = proc.info['name'].lower()
-                # 关闭主程序和守护进程
-                if ("课堂抽号程序" in proc_name or 
-                    "daemon.exe" in proc_name or 
-                    (proc_name == "python.exe" and any(
-                        "daemon.py" in cmdline for cmdline in proc.cmdline()
-                    ))):
-                    proc.terminate()
-                    self.logger.info(f"终止进程: {proc_name}")
-                    closed = True
-            except (NoSuchProcess, AccessDenied, ZombieProcess):
-                pass
-        # 等待进程结束
-        if closed:
-            sleep(1)
+        try:
+            import psutil
+            for proc in psutil.process_iter(['pid', 'name']):
+                try:
+                    proc_name = proc.info['name'].lower()
+                    cmdline = proc.info.get('cmdline', [])
+                    # 关闭主程序和守护进程
+                    if ("课堂抽号程序" in proc_name or
+                            "daemon.exe" in proc_name or
+                            (proc_name == "python.exe" and any(
+                                "daemon.py" in arg for arg in cmdline
+                            ))):
+                        proc.terminate()
+                        closed = True
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+            # 等待进程结束
+            if closed:
+                import time
+                time.sleep(1)
+        except ImportError:
+            # 如果没有安装psutil，则跳过关闭过程
+            pass
         return closed
 
     def import_student_list(self):
         """导入学生名单文件(CSV或XLSX)"""
-        self.logger.info("开始导入学生名单")
-        file_path = filedialog.askopenfilename(
-            title="选择学生名单文件",
-            filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv"), ("All files", "*.*")]
+        try:
+            import pandas as pd
+        except ImportError:
+            QMessageBox.critical(self, "错误", "缺少必要的库: pandas")
+            return
+
+        file_path, _ = QFileDialog.getOpenFileName(
+            self,
+            "选择学生名单文件",
+            "",
+            "Excel files (*.xlsx);;CSV files (*.csv);;All files (*.*)"
         )
 
         if not file_path:
-            self.logger.info("用户取消了文件选择")
             return
 
         try:
             # 读取文件
             if file_path.endswith('.csv'):
-                df = read_csv(file_path, encoding='utf-8')
+                df = pd.read_csv(file_path, encoding='utf-8')
             else:
-                df = read_excel(file_path)
+                df = pd.read_excel(file_path)
 
             # 检查列名
             if len(df.columns) < 2:
-                self.logger.error("文件列数不足")
-                messagebox.showerror("错误", "文件至少需要两列（学号和姓名）")
+                QMessageBox.critical(self, "错误", "文件至少需要两列（学号和姓名）")
                 return
 
             # 获取学号和姓名列
@@ -336,88 +364,79 @@ class LauncherApp:
                     continue
 
             if not student_dict:
-                self.logger.error("未能从文件中提取有效的学生信息")
-                messagebox.showerror("错误", "未能从文件中提取有效的学生信息")
+                QMessageBox.critical(self, "错误", "未能从文件中提取有效的学生信息")
                 return
 
             # 保存到JSON文件
             with open('students.json', 'w', encoding='utf-8') as f:
-                dump(student_dict, f, ensure_ascii=False, indent=2)
+                json.dump(student_dict, f, ensure_ascii=False, indent=2)
 
-            self.logger.info(f"成功导入 {len(student_dict)} 名学生信息")
-            messagebox.showinfo("成功", f"成功导入{len(student_dict)}名学生信息")
+            QMessageBox.information(self, "成功", f"成功导入{len(student_dict)}名学生信息")
             # 更新显示
-            self.student_info_label.config(text=f"已成功加载{len(student_dict)}名学生的信息")
+            self.student_info_label.setText(f"已成功加载{len(student_dict)}名学生的信息")
 
         except Exception as e:
-            self.logger.error(f"导入失败: {e}")
-            messagebox.showerror("错误", f"导入失败: {str(e)}")
+            QMessageBox.critical(self, "错误", f"导入失败: {str(e)}")
 
     def find_daemon_exe(self):
         """查找守护进程可执行文件"""
-        daemon_path = path.join('.', 'daemon.exe')
-        if path.exists(daemon_path):
-            self.logger.info(f"找到守护进程可执行文件: {daemon_path}")
+        daemon_path = os.path.join('.', 'daemon.exe')
+        if os.path.exists(daemon_path):
             return daemon_path
         # 如果没有exe文件，尝试使用Python脚本
-        daemon_py = path.join('.', 'daemon.py')
-        if path.exists(daemon_py):
-            self.logger.info(f"找到守护进程脚本: {daemon_py}")
+        daemon_py = os.path.join('.', 'daemon.py')
+        if os.path.exists(daemon_py):
             return ['python', daemon_py]
-        self.logger.warning("未找到守护进程文件")
         return None
 
     def run_program(self):
         """运行选中的程序版本"""
-        self.logger.info("开始运行程序")
         # 先保存配置
         self.save_config()
 
-        selected = self.selected_version.get()
-        if not selected:
-            self.logger.warning("未选择程序版本")
-            messagebox.showwarning("警告", "请先选择一个程序版本")
+        # 获取选中的版本
+        selected_radio = self.version_group.checkedButton()
+        if not selected_radio:
+            QMessageBox.warning(self, "警告", "请先选择一个程序版本")
             return
 
+        selected = selected_radio.text()
         if selected not in self.exe_files:
-            self.logger.error(f"选择的程序版本不存在: {selected}")
-            messagebox.showerror("错误", "选择的程序版本不存在")
+            QMessageBox.critical(self, "错误", "选择的程序版本不存在")
             return
 
         # 查找守护进程
         daemon_exe = self.find_daemon_exe()
         if not daemon_exe:
-            self.logger.error("未找到守护进程")
-            messagebox.showerror("错误", "未找到守护进程(daemon.exe或daemon.py)")
+            QMessageBox.critical(self, "错误", "未找到守护进程(daemon.exe或daemon.py)")
             return
 
         # 检查是否已经有抽号程序在运行
         if self.is_lottery_running():
-            self.logger.info("检测到已在运行的程序实例")
-            result = messagebox.askokcancel(
-                "提示", 
-                "已经有一个抽号程序在运行，需要关闭它才能继续。点击确定关闭运行中的程序。"
+            result = QMessageBox.question(
+                self,
+                "提示",
+                "已经有一个抽号程序在运行，需要关闭它才能继续。点击确定关闭运行中的程序。",
+                QMessageBox.Ok | QMessageBox.Cancel
             )
-            if result:
-                self.logger.info("用户确认关闭运行中的程序")
+            if result == QMessageBox.Ok:
                 self.close_lottery_processes()
             else:
-                self.logger.info("用户取消操作")
                 return
 
         try:
             exe_path = self.exe_files[selected]['path']
-            # 从组合框的值中提取模式数字
-            mode_value = self.mode_var.get().split(' ')[0]
+            # 获取模式值
+            mode_value = self.mode_combo.currentData()
             # 构建传递给主程序的参数
             program_args = [
-                f"--min-number={self.min_var.get()}",
-                f"--max-number={self.max_var.get()}",
-                f"--delay={self.delay_var.get()}",
-                f"--keep={self.keep_var.get()}",
+                f"--min-number={self.min_edit.text()}",
+                f"--max-number={self.max_edit.text()}",
+                f"--delay={self.delay_edit.text()}",
+                f"--keep={self.keep_edit.text()}",
                 f"--student-mode={mode_value}",
-                f"--enable-voice={self.voice_var.get()}",
-                f"--voice-template={self.voice_template_var.get()}"
+                f"--enable-voice={'1' if self.voice_checkbox.isChecked() else '0'}",
+                f"--voice-template={self.voice_template_edit.text()}"
             ]
             # 构建守护进程命令
             # 统一使用 "--" 分隔符区分参数，无论使用exe还是py形式的守护进程
@@ -426,18 +445,16 @@ class LauncherApp:
             else:
                 cmd = [daemon_exe, exe_path, "--"] + program_args
             # 启动守护进程
-            self.logger.info(f"启动守护进程命令: {' '.join(cmd)}")
             Popen(cmd, shell=True)
-            messagebox.showinfo("提示", f"正在启动 {selected} (守护进程)")
+            QMessageBox.information(self, "提示", f"正在启动 {selected} (守护进程)")
             # 启动成功后自动关闭启动器
-            self.logger.info("启动器即将退出")
-            self.root.quit()
+            self.close()
         except Exception as e:
-            self.logger.error(f"启动程序失败: {e}")
-            messagebox.showerror("错误", f"启动程序失败: {e}")
+            QMessageBox.critical(self, "错误", f"启动程序失败: {e}")
 
 
 if __name__ == "__main__":
-    root = Tk()
-    app = LauncherApp(root)
-    root.mainloop()
+    app = QApplication(sys.argv)
+    launcher = LauncherApp()
+    launcher.show()
+    sys.exit(app.exec_())

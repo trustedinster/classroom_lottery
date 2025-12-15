@@ -18,11 +18,11 @@ VSVersionInfo(
       StringTable(
         u'040904B0',
         [StringStruct(u'CompanyName', u'Supercmd'),
-        StringStruct(u'FileDescription', u'课堂抽号程序'),
+        StringStruct(u'FileDescription', u'课堂抽号程序启动器'),
         StringStruct(u'FileVersion', u'2.0.0.0'),
-        StringStruct(u'InternalName', u'classroom_lottery'),
+        StringStruct(u'InternalName', u'classroom_lottery_launcher'),
         StringStruct(u'LegalCopyright', u'Copyright (C) 2025'),
-        StringStruct(u'OriginalFilename', u'课堂抽号程序.exe'),
+        StringStruct(u'OriginalFilename', u'launcher.exe'),
         StringStruct(u'ProductName', u'课堂抽号程序'),
         StringStruct(u'ProductVersion', u'2.0.0.0')])
       ]),

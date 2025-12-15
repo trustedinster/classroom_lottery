@@ -5,18 +5,57 @@ from PyInstaller.utils.hooks import collect_submodules
 
 # ==================== 基础配置 ====================
 block_cipher = None
-icon_path = 'assets/icon.ico'
-version_info_path = 'version_info.txt'
 
-# 检测图标文件是否存在
-if not os.path.exists(icon_path):
-    icon_path = None
-    print("警告：未找到自定义图标文件，将使用默认图标")
+# 主程序图标和版本信息
+main_icon_path = 'assets/icon.ico'
+main_version_info_path = 'version_info.txt'
 
-# 检测版本信息文件是否存在
-if not os.path.exists(version_info_path):
-    version_info_path = None
-    print("警告：未找到版本信息文件，将使用默认版本信息")
+# 守护进程图标和版本信息
+daemon_icon_path = 'assets/daemon.ico'
+daemon_version_info_path = 'version_info_daemon.txt'
+
+# 启动器图标和版本信息
+launcher_icon_path = 'assets/launcher.ico'
+launcher_version_info_path = 'version_info_launcher.txt'
+
+# 更新程序图标和版本信息
+update_icon_path = 'assets/update.ico'
+update_version_info_path = 'version_info_update.txt'
+
+# 检测主程序图标文件是否存在
+if not os.path.exists(main_icon_path):
+    main_icon_path = 'assets/icon.ico' if os.path.exists('assets/icon.ico') else None
+    if not main_icon_path:
+        print("警告：未找到主程序图标文件，将使用默认图标")
+
+# 检测守护进程图标文件是否存在
+if not os.path.exists(daemon_icon_path):
+    daemon_icon_path = 'assets/icon.ico' if os.path.exists('assets/icon.ico') else main_icon_path
+
+# 检测启动器图标文件是否存在
+if not os.path.exists(launcher_icon_path):
+    launcher_icon_path = 'assets/icon.ico' if os.path.exists('assets/icon.ico') else main_icon_path
+
+# 检测更新程序图标文件是否存在
+if not os.path.exists(update_icon_path):
+    update_icon_path = 'assets/icon.ico' if os.path.exists('assets/icon.ico') else main_icon_path
+
+# 检测主程序版本信息文件是否存在
+if not os.path.exists(main_version_info_path):
+    main_version_info_path = None
+    print("警告：未找到主程序版本信息文件，将使用默认版本信息")
+
+# 检测守护进程版本信息文件是否存在
+if not os.path.exists(daemon_version_info_path):
+    daemon_version_info_path = main_version_info_path
+
+# 检测启动器版本信息文件是否存在
+if not os.path.exists(launcher_version_info_path):
+    launcher_version_info_path = main_version_info_path
+
+# 检测更新程序版本信息文件是否存在
+if not os.path.exists(update_version_info_path):
+    update_version_info_path = main_version_info_path
 
 # ==================== 主程序分析 (main.py) ====================
 a_main = Analysis(
@@ -67,6 +106,7 @@ a_main = Analysis(
         'IPython',
         'pytest',
         'sphinx',
+        'tqdm',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -106,8 +146,8 @@ a_daemon = Analysis(
         'keyboard',
         'configparser',
         'json',
-        'pickle',
         'random',
+        'tqdm',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -124,10 +164,9 @@ a_launcher = Analysis(
         ('assets/*', 'assets'),
     ],
     hiddenimports=[
-        'tkinter',
-        'tkinter.ttk',
-        'tkinter.filedialog',
-        'tkinter.messagebox',
+        'PySide2.QtCore',
+        'PySide2.QtGui',
+        'PySide2.QtWidgets',
         'configparser',
         'subprocess',
         'psutil',
@@ -149,10 +188,10 @@ a_launcher = Analysis(
         'notebook',
         'jupyter',
         'IPython',
-        'PySide2',
         'pyttsx3',
         'winsound',
         'keyboard',
+        'tqdm',
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
@@ -184,8 +223,8 @@ exe_main = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=icon_path,
-    version=version_info_path,
+    icon=main_icon_path,
+    version=main_version_info_path,
     onefile=False,  # 目录模式
 )
 
@@ -213,8 +252,8 @@ exe_daemon = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=icon_path,
-    version=version_info_path,
+    icon=daemon_icon_path,
+    version=daemon_version_info_path,
     onefile=False,  # 目录模式
 )
 
@@ -229,7 +268,7 @@ exe_launcher = EXE(
     pyz_launcher,
     a_launcher.scripts,
     [],
-    name='launcher',
+    name='启动器',
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,
@@ -242,8 +281,87 @@ exe_launcher = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=icon_path,
-    version=version_info_path,
+    icon=launcher_icon_path,
+    version=launcher_version_info_path,
+    onefile=False,  # 目录模式
+)
+
+# ==================== 更新程序分析 (update.py) ====================
+a_update = Analysis(
+    ['update.py'],
+    pathex=[os.getcwd()],
+    binaries=[],
+    datas=[],
+    hiddenimports=[
+        'requests',
+        'json',
+        'typing',
+        're',
+        'os',
+        'logging',
+        'zipfile',
+        'shutil',
+        'argparse',
+        'time',
+        'datetime',
+        'tqdm',
+        'psutil',
+        'subprocess',
+    ],
+    hookspath=[],
+    hooksconfig={},
+    runtime_hooks=[],
+    excludes=[
+        'matplotlib',
+        'numpy',
+        'pandas',
+        'scipy',
+        'notebook',
+        'jupyter',
+        'IPython',
+        'pytest',
+        'sphinx',
+        'PySide2',
+        'pyttsx3',
+        'winsound',
+        'keyboard',
+        'configparser',
+        'pickle',
+        'random',
+        'PIL',
+    ],
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
+    noarchive=False,
+)
+
+# ==================== 更新程序可执行文件 ====================
+pyz_update = PYZ(
+    a_update.pure,
+    a_update.zipped_data,
+    cipher=block_cipher,
+)
+
+exe_update = EXE(
+    pyz_update,
+    a_update.scripts,
+    [],
+    name='update',
+    debug=False,
+    bootloader_ignore_signals=False,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    runtime_tmpdir=None,
+    console=False,
+    disable_windowed_traceback=False,
+    argv_emulation=False,
+    target_arch=None,
+    codesign_identity=None,
+    entitlements_file=None,
+    icon=update_icon_path,
+    version=update_version_info_path,
     onefile=False,  # 目录模式
 )
 
@@ -256,7 +374,7 @@ coll_main = COLLECT(
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='课堂抽号程序',
+    name='main',
     distpath='dist',
 )
 
@@ -281,5 +399,17 @@ coll_launcher = COLLECT(
     upx=True,
     upx_exclude=[],
     name='launcher',
+    distpath='dist',
+)
+
+coll_update = COLLECT(
+    exe_update,
+    a_update.binaries,
+    a_update.zipfiles,
+    a_update.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='update',
     distpath='dist',
 )
