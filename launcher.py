@@ -1,3 +1,6 @@
+import logging
+import os
+from datetime import datetime
 from tkinter import ttk, messagebox, filedialog, Tk, StringVar, Label, Frame, Entry, Checkbutton, Button, Radiobutton
 from configparser import ConfigParser
 from subprocess import Popen
@@ -9,8 +12,27 @@ from pandas import read_csv, read_excel
 from json import load, dump
 
 
+def setup_logging():
+    """设置日志记录"""
+    log_dir = 'logs'
+    if not os.path.exists(log_dir):
+        os.makedirs(log_dir)
+    log_file = os.path.join(log_dir, f'launcher_{datetime.now().strftime("%Y%m%d")}.log')
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.FileHandler(log_file, encoding='utf-8'),
+        ]
+    )
+    return logging.getLogger(__name__)
+
+
 class LauncherApp:
     def __init__(self, root):
+        self.logger = setup_logging()
+        self.logger.info("启动器初始化开始")
+        
         self.root = root
         self.root.title("课堂抽号程序启动器")
         self.root.geometry("500x600")  # 增加窗口高度
@@ -42,12 +64,17 @@ class LauncherApp:
                 "警告", 
                 "未找到守护进程(daemon.exe或daemon.py)，程序稳定性将无法保证"
             )
+            self.logger.warning("未找到守护进程(daemon.exe或daemon.py)")
+
+        self.logger.info("启动器初始化完成")
 
     def load_config(self):
         """加载配置文件"""
         try:
             self.config.read(self.config_file, encoding='utf-8')
+            self.logger.info(f"配置文件加载成功: {self.config_file}")
         except Exception as e:
+            self.logger.error(f"无法读取配置文件: {e}")
             messagebox.showerror("错误", f"无法读取配置文件: {e}")
 
     def find_exe_files(self):
@@ -64,6 +91,8 @@ class LauncherApp:
                 # 提取版本号，例如 课堂抽号程序2.0.exe -> 2.0
                 version = basename.replace('课堂抽号程序', '').replace('.exe', '')
                 versions[basename] = {'version': version, 'path': exe}
+        
+        self.logger.info(f"找到 {len(versions)} 个可执行文件")
         return versions
 
     def get_latest_version(self):
@@ -74,6 +103,7 @@ class LauncherApp:
         # 简单排序，找出最大的版本号
         versions = [(v['version'], name) for name, v in self.exe_files.items()]
         versions.sort(key=lambda x: x[0], reverse=True)
+        self.logger.info(f"最新版本: {versions[0][1]}")
         return versions[0][1]
 
     def check_student_list(self):
@@ -84,10 +114,13 @@ class LauncherApp:
                     students = load(f)
                 # 更新显示
                 self.student_info_label.config(text=f"已成功加载{len(students)}名学生的信息")
+                self.logger.info(f"已成功加载 {len(students)} 名学生的信息")
                 return True
         except Exception as e:
+            self.logger.error(f"加载学生名单时出错: {e}")
             pass
         self.student_info_label.config(text="未加载学生名单")
+        self.logger.info("未找到学生名单")
         return False
 
     def create_widgets(self):
@@ -211,8 +244,10 @@ class LauncherApp:
             with open(self.config_file, 'w', encoding='utf-8') as configfile:
                 self.config.write(configfile)
 
+            self.logger.info("配置保存成功")
             messagebox.showinfo("成功", "配置已保存")
         except Exception as e:
+            self.logger.error(f"保存配置失败: {e}")
             messagebox.showerror("错误", f"保存配置失败: {e}")
 
     def is_lottery_running(self):
@@ -225,6 +260,7 @@ class LauncherApp:
                     (proc_name == "python.exe" and any(
                         "daemon.py" in cmdline for cmdline in proc.cmdline()
                     ))):
+                    self.logger.info(f"检测到正在运行的进程: {proc_name}")
                     return True
             except (NoSuchProcess, AccessDenied, ZombieProcess):
                 pass
@@ -243,6 +279,7 @@ class LauncherApp:
                         "daemon.py" in cmdline for cmdline in proc.cmdline()
                     ))):
                     proc.terminate()
+                    self.logger.info(f"终止进程: {proc_name}")
                     closed = True
             except (NoSuchProcess, AccessDenied, ZombieProcess):
                 pass
@@ -253,12 +290,14 @@ class LauncherApp:
 
     def import_student_list(self):
         """导入学生名单文件(CSV或XLSX)"""
+        self.logger.info("开始导入学生名单")
         file_path = filedialog.askopenfilename(
             title="选择学生名单文件",
             filetypes=[("Excel files", "*.xlsx"), ("CSV files", "*.csv"), ("All files", "*.*")]
         )
 
         if not file_path:
+            self.logger.info("用户取消了文件选择")
             return
 
         try:
@@ -270,6 +309,7 @@ class LauncherApp:
 
             # 检查列名
             if len(df.columns) < 2:
+                self.logger.error("文件列数不足")
                 messagebox.showerror("错误", "文件至少需要两列（学号和姓名）")
                 return
 
@@ -296,6 +336,7 @@ class LauncherApp:
                     continue
 
             if not student_dict:
+                self.logger.error("未能从文件中提取有效的学生信息")
                 messagebox.showerror("错误", "未能从文件中提取有效的学生信息")
                 return
 
@@ -303,53 +344,65 @@ class LauncherApp:
             with open('students.json', 'w', encoding='utf-8') as f:
                 dump(student_dict, f, ensure_ascii=False, indent=2)
 
+            self.logger.info(f"成功导入 {len(student_dict)} 名学生信息")
             messagebox.showinfo("成功", f"成功导入{len(student_dict)}名学生信息")
             # 更新显示
             self.student_info_label.config(text=f"已成功加载{len(student_dict)}名学生的信息")
 
         except Exception as e:
+            self.logger.error(f"导入失败: {e}")
             messagebox.showerror("错误", f"导入失败: {str(e)}")
 
     def find_daemon_exe(self):
         """查找守护进程可执行文件"""
         daemon_path = path.join('.', 'daemon.exe')
         if path.exists(daemon_path):
+            self.logger.info(f"找到守护进程可执行文件: {daemon_path}")
             return daemon_path
         # 如果没有exe文件，尝试使用Python脚本
         daemon_py = path.join('.', 'daemon.py')
         if path.exists(daemon_py):
+            self.logger.info(f"找到守护进程脚本: {daemon_py}")
             return ['python', daemon_py]
+        self.logger.warning("未找到守护进程文件")
         return None
 
     def run_program(self):
         """运行选中的程序版本"""
+        self.logger.info("开始运行程序")
         # 先保存配置
         self.save_config()
 
         selected = self.selected_version.get()
         if not selected:
+            self.logger.warning("未选择程序版本")
             messagebox.showwarning("警告", "请先选择一个程序版本")
             return
 
         if selected not in self.exe_files:
+            self.logger.error(f"选择的程序版本不存在: {selected}")
             messagebox.showerror("错误", "选择的程序版本不存在")
             return
 
         # 查找守护进程
         daemon_exe = self.find_daemon_exe()
         if not daemon_exe:
+            self.logger.error("未找到守护进程")
             messagebox.showerror("错误", "未找到守护进程(daemon.exe或daemon.py)")
             return
 
         # 检查是否已经有抽号程序在运行
         if self.is_lottery_running():
+            self.logger.info("检测到已在运行的程序实例")
             result = messagebox.askokcancel(
                 "提示", 
                 "已经有一个抽号程序在运行，需要关闭它才能继续。点击确定关闭运行中的程序。"
             )
             if result:
+                self.logger.info("用户确认关闭运行中的程序")
                 self.close_lottery_processes()
             else:
+                self.logger.info("用户取消操作")
                 return
 
         try:
@@ -373,11 +426,14 @@ class LauncherApp:
             else:
                 cmd = [daemon_exe, exe_path, "--"] + program_args
             # 启动守护进程
+            self.logger.info(f"启动守护进程命令: {' '.join(cmd)}")
             Popen(cmd, shell=True)
             messagebox.showinfo("提示", f"正在启动 {selected} (守护进程)")
             # 启动成功后自动关闭启动器
+            self.logger.info("启动器即将退出")
             self.root.quit()
         except Exception as e:
+            self.logger.error(f"启动程序失败: {e}")
             messagebox.showerror("错误", f"启动程序失败: {e}")
 
 
