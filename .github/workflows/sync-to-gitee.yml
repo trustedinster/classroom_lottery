@@ -1,9 +1,23 @@
 name: Sync GitHub Release to Gitee
 
-# 触发条件：当 Release 被创建时自动触发
+# 触发条件：当 Release 被创建时自动触发或手动触发
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release to sync'
+        required: true
+        type: string
+      release_name:
+        description: 'Name of the release'
+        required: false
+        type: string
+      release_body:
+        description: 'Body content of the release'
+        required: false
+        type: string
 
 # 环境变量设置
 env:
@@ -48,9 +62,9 @@ jobs:
         uses: robinraju/release-downloader@v1.12
         id: download-release
         with:
-          fileName: 'classroom_lottery_${{ github.ref_name }}.zip'
+          fileName: 'classroom_lottery_${{ github.event.release.tag_name || inputs.tag_name }}.zip'
           token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.ref_name }}
+          tag: ${{ github.event.release.tag_name || inputs.tag_name }}
           out-file-path: assets
       # 5. 上传到 Gitee
       - name: Upload to Gitee
@@ -60,9 +74,9 @@ jobs:
           gitee_token: ${{ secrets.GITEE_TOKEN }}
           gitee_owner: ${{ env.GITEE_OWNER }}
           gitee_repo: ${{ env.GITEE_REPO }}
-          gitee_tag_name: ${{ github.ref_name }}
-          gitee_release_name: ${{ github.event.release.name }}
-          gitee_release_body: ${{ github.event.release.body }}
+          gitee_tag_name: ${{ github.event.release.tag_name || inputs.tag_name }}
+          gitee_release_name: ${{ github.event.release.name || inputs.release_name || github.event.release.tag_name || inputs.tag_name }}
+          gitee_release_body: ${{ github.event.release.body || inputs.release_body }}
           gitee_target_commitish: master
           gitee_upload_retry_times: 3
           gitee_file_name: ${{ fromJson(steps.download-release.outputs.downloaded_files)[0] }}
