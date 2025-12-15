@@ -3,7 +3,7 @@ name: Sync GitHub Release to Gitee
 # 触发条件：当 Release 被创建时自动触发
 on:
   release:
-    types: [published]
+    types: [published, edited]
 
 # 环境变量设置
 env:
