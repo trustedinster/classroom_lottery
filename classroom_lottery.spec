@@ -325,7 +325,6 @@ a_update = Analysis(
         'pyttsx3',
         'winsound',
         'keyboard',
-        'configparser',
         'PIL',
     ],
     win_no_prefer_redirects=False,
