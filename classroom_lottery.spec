@@ -326,7 +326,6 @@ a_update = Analysis(
         'winsound',
         'keyboard',
         'configparser',
-        'pickle',
         'random',
         'PIL',
     ],
