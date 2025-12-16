@@ -1,6 +1,5 @@
 name: Sync GitHub Release to Gitee
 
-# 触发条件：当 Release 被创建时自动触发或手动触发
 on:
   release:
     types: [published]
@@ -19,21 +18,18 @@ on:
         required: false
         type: string
 
-# 环境变量设置
 env:
-  # 仓库信息
   GITHUB_OWNER: trustedinster
   GITHUB_REPO: classroom_lottery
   GITEE_OWNER: Bilibili-Supercmd
   GITEE_REPO: classroom_lottery
-  # Git 用户配置
   GIT_USER_NAME: BiliBili UP主Supercmd
   GIT_USER_EMAIL: trustedinster@outlook.com
 
 jobs:
   sync-to-gitee:
     runs-on: ubuntu-latest
-
+    
     steps:
       # 1. 检出代码
       - name: Checkout code
@@ -57,6 +53,7 @@ jobs:
           dst_token: ${{ secrets.GITEE_TOKEN }}
           force_update: true
           static_list: "classroom_lottery"
+
       # 4. 下载 GitHub Release
       - name: Download GitHub Release
         uses: robinraju/release-downloader@v1.12
@@ -66,6 +63,7 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.release.tag_name || inputs.tag_name }}
           out-file-path: assets
+
       # 5. 上传到 Gitee
       - name: Upload to Gitee
         uses: nICEnnnnnnnLee/action-gitee-release@v2.0.0
@@ -79,25 +77,26 @@ jobs:
           gitee_release_body: ${{ github.event.release.body || inputs.release_body || inputs.tag_name || github.event.release.tag_name }}
           gitee_target_commitish: master
           gitee_upload_retry_times: 3
-          gitee_file_name: ${{ fromJson(steps.download-release.outputs.downloaded_files) [0] }}
-          gitee_file_path: /home/runner/work/classroom_lottery/classroom_lottery/assets/
-      # 7. 清理临时文件
+          gitee_file_name: ${{ fromJson(steps.download-release.outputs.downloaded_files)[0] }}
+          gitee_file_path: assets
+
+      # 6. 清理临时文件
       - name: Cleanup
         if: always()
-        run: |
-          # 清理下载的附件
-          rm -rf assets
+        run: rm -rf assets
 
-      # 8. 错误处理
+      # 7. 错误处理
       - name: Error Handling
         if: failure()
         uses: actions/github-script@v7
         with:
           script: |
-            // 发送错误通知
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              body: '❌ 同步 Release 到 Gitee 失败，请检查错误日志。'
-            })
+            // 只有在 pull request 或 issue 中才能发送评论
+            if (context.issue && context.issue.number) {
+              await github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: '同步 Release 到 Gitee 失败，请检查错误日志。'
+              });
+            }
