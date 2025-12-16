@@ -42,9 +42,8 @@ jobs:
           static_list: "classroom_lottery"
 
       # 4. 上传到 Gitee
-      - name: Sync Release to Gitee
-        id: create_release
-        uses: h-twinkle/sync-action@master
+      - name: sync-github-release-to-gitee
+        uses: trustedinster/sync-release-gitee@v1.0
         with:
           gitee_owner: ${{ env.GITEE_OWNER }}
           gitee_repo: ${{ env.GITEE_REPO }}
