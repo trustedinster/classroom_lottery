@@ -65,7 +65,6 @@ jobs:
           fileName: 'classroom_lottery_${{ github.event.release.tag_name || inputs.tag_name }}.zip'
           token: ${{ secrets.GITHUB_TOKEN }}
           tag: ${{ github.event.release.tag_name || inputs.tag_name }}
-          out-file-path: assets
       # 5. 上传到 Gitee
       - name: Upload to Gitee
         uses: nICEnnnnnnnLee/action-gitee-release@v2.0.0
@@ -80,7 +79,6 @@ jobs:
           gitee_target_commitish: master
           gitee_upload_retry_times: 3
           gitee_file_name: ${{ fromJson(steps.download-release.outputs.downloaded_files) [0] }}
-          gitee_file_path: assets
       # 7. 清理临时文件
       - name: Cleanup
         if: always()
