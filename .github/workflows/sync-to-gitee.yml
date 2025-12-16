@@ -78,7 +78,7 @@ jobs:
           gitee_target_commitish: master
           gitee_upload_retry_times: 3
           gitee_file_name: ${{ fromJson(steps.download-release.outputs.downloaded_files)[0] }}
-          gitee_file_path: $GITHUB_WORKSPACE/assets
+          gitee_file_path: ${{GITHUB_WORKSPACE}}/assets
 
       # 6. 清理临时文件
       - name: Cleanup
