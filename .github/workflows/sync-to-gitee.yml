@@ -54,20 +54,10 @@ jobs:
           force_update: true
           static_list: "classroom_lottery"
 
-      # 4. 下载 GitHub Release
-      - name: Download GitHub Release
-        uses: robinraju/release-downloader@v1.12
-        id: download-release
-        with:
-          fileName: 'classroom_lottery_${{ github.event.release.tag_name || inputs.tag_name }}.zip'
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag: ${{ github.event.release.tag_name || inputs.tag_name }}
-          out-file-path: assets
-
-      # 5. 上传到 Gitee
-      - name: Upload Release to Gitee
+      # 4. 上传到 Gitee
+      - name: Sync Release to Gitee
         id: create_release
-        uses: h-twinkle/sync-action@v1.0
+        uses: h-twinkle/sync-action@master
         with:
           gitee_owner: ${{ env.GITEE_OWNER }}
           gitee_repo: ${{ env.GITEE_REPO }}
@@ -76,12 +66,12 @@ jobs:
           github_repo: ${{ env.GITHUB_REPO }}
           gitee_upload_retry_times:  3
 
-      # 6. 清理临时文件
+      # 5. 清理临时文件
       - name: Cleanup
         if: always()
         run: rm -rf assets
 
-      # 7. 错误处理
+      # 6. 错误处理
       - name: Error Handling
         if: failure()
         uses: actions/github-script@v7
