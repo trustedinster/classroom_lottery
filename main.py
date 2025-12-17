@@ -534,7 +534,7 @@ class LotteryApp:
         # 关闭已存在的窗口（如果有）
         if self.current_window is not None:
             self.current_window.close()
-        
+
         # 创建并持久化窗口引用
         self.current_window = LotteryWindow(number)
         self.current_window.show()

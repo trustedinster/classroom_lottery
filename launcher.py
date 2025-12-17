@@ -173,7 +173,7 @@ class LauncherApp(QMainWindow):
 
         voice_layout.addWidget(QLabel("叫号模板:"))
         self.voice_template_edit = QLineEdit()
-        self.voice_template_edit.setText(self.config.get('lottery', 'voice_template', fallback='请{}号同学回答问题'))
+        self.voice_template_edit.setText(self.config.get('lottery', 'voice_template', fallback='请{}同学回答问题'))
         voice_layout.addWidget(self.voice_template_edit)
         config_layout.addLayout(voice_layout)
 
