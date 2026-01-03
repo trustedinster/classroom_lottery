@@ -362,51 +362,29 @@ exe_update = EXE(
     onefile=False,  # 目录模式
 )
 
-# ==================== 多包收集 ====================
-coll_main = COLLECT(
+# ==================== 共享多包收集 ====================
+coll = COLLECT(
+    # 1. 放入所有的 EXE
     exe_main,
+    exe_daemon,
+    exe_launcher,
+    exe_update,
+    # 2. 放入所有的依赖项 (PyInstaller 会自动去重)
     a_main.binaries,
     a_main.zipfiles,
     a_main.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='main',
-    distpath='dist',
-)
-
-coll_daemon = COLLECT(
-    exe_daemon,
     a_daemon.binaries,
     a_daemon.zipfiles,
     a_daemon.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='daemon',
-    distpath='dist',
-)
-
-coll_launcher = COLLECT(
-    exe_launcher,
     a_launcher.binaries,
     a_launcher.zipfiles,
     a_launcher.datas,
-    strip=False,
-    upx=True,
-    upx_exclude=[],
-    name='launcher',
-    distpath='dist',
-)
-
-coll_update = COLLECT(
-    exe_update,
     a_update.binaries,
     a_update.zipfiles,
     a_update.datas,
     strip=False,
     upx=True,
     upx_exclude=[],
-    name='update',
+    name='classroom_lottery',  # 最终输出目录名称：dist/classroom_lottery
     distpath='dist',
 )

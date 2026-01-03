@@ -21,58 +21,71 @@ jobs:
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
+        # 安装 Nuitka 及其推荐的依赖
+        pip install nuitka ordered-set zstandard
 
+    # ==================== PyInstaller 构建 ====================
     - name: Build with PyInstaller
       run: |
         pyinstaller classroom_lottery.spec
-        
-    - name: Process dist directory structure
+
+    - name: Prepare PyInstaller Artifacts
       run: |
-        # 创建临时目录
-        New-Item -ItemType Directory -Path "temp_dist" -Force
+        # 将 PyInstaller 的输出移动到 dist_py 目录，避免与 Nuitka 混淆
+        mkdir dist_py
+        Copy-Item -Path "dist\classroom_lottery\*" -Destination "dist_py\" -Recurse -Force
+        Remove-Item -Path "dist\classroom_lottery" -Recurse -Force
+
+    # ==================== Nuitka 构建 ====================
+    - name: Build with Nuitka
+      run: |
+        # 执行之前编写好的 PowerShell 构建脚本
+        powershell -ExecutionPolicy Bypass -File .\build.ps1
+
+    - name: Prepare Nuitka Artifacts
+      run: |
+        # Nuitka 的产物位于 dist/classroom_lottery/main.dist (或其他命名 .dist)
+        # 我们需要将其内容提取到 dist_nuitka 目录中
+        mkdir dist_nuitka
         
-        # 复制所有 _internal 文件夹到临时目录
-        $internalTarget = Join-Path "temp_dist" "_internal"
-        New-Item -ItemType Directory -Path $internalTarget -Force
-        Get-ChildItem -Path "dist" -Filter "*_internal" -Recurse | ForEach-Object {
-            # 获取 _internal 目录下的所有内容并复制到统一的目标目录
-            Get-ChildItem -Path $_.FullName | ForEach-Object {
-                Copy-Item -Path $_.FullName -Destination $internalTarget -Recurse -Force
-            }
+        # 查找 Nuitka 生成的 .dist 目录
+        $nuitkaDistDir = Get-ChildItem -Path "dist\classroom_lottery" -Directory -Filter "*.dist" | Select-Object -First 1
+        
+        if ($nuitkaDistDir) {
+            Write-Host "找到 Nuitka 构建目录: $($nuitkaDistDir.FullName)"
+            # 将 .dist 目录内的内容移动到 dist_nuitka/classroom_lottery
+            Copy-Item -Path "$($nuitkaDistDir.FullName)\*" -Destination "dist_nuitka\classroom_lottery" -Recurse -Force
+        } else {
+            Write-Error "未找到 Nuitka 的 .dist 输出目录，构建可能失败。"
+            exit 1
         }
-        
-        # 复制 assets 文件夹到临时目录
-        if (Test-Path "dist\assets") {
-            Copy-Item -Path "dist\assets" -Destination "temp_dist\assets" -Recurse -Force
-        }
-        
-        # 复制根目录的 assets 文件夹到临时目录
-        if (Test-Path "assets") {
-            Copy-Item -Path "assets" -Destination "temp_dist\assets" -Recurse -Force
-        }
-        
-        # 复制所有 exe 文件到临时目录
-        Get-ChildItem -Path "dist" -Filter "*.exe" -Recurse | ForEach-Object {
-            Copy-Item -Path $_.FullName -Destination "temp_dist" -Force
-        }
-        
-        # 删除原有的 dist 目录
-        Remove-Item -Path "dist" -Recurse -Force
-        
-        # 重命名临时目录为 dist
-        Rename-Item -Path "temp_dist" -NewName "dist"
-        
-    - name: Create zip archive
+
+    # ==================== 打包 ====================
+    - name: Create Archives
       run: |
         # 获取 tag 名称
         $tag = "${{ github.ref }}".Substring("${{ github.ref }}".LastIndexOf('/') + 1)
         
-        # 创建 zip 文件
-        Compress-Archive -Path dist\* -DestinationPath "classroom_lottery_$tag.zip"
+        # 打包 PyInstaller 版本
+        Compress-Archive -Path dist_py\* -DestinationPath "classroom_lottery_pyinstaller_$tag.zip" -Force
         
+        # 打包 Nuitka 版本
+        Compress-Archive -Path dist_nuitka\* -DestinationPath "classroom_lottery_nuitka_$tag.zip" -Force
+        
+        # 查看生成的文件
+        Write-Host "生成的 zip 文件："
+        Get-ChildItem -Path "*.zip" | Format-Table Name, Length
+
+    # ==================== 发布 ====================
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
-        files: classroom_lottery_*.zip
+        # 同时上传两个版本的 zip
+        files: |
+          classroom_lottery_pyinstaller_*.zip
+          classroom_lottery_nuitka_*.zip
+        generate_release_notes: true
+        draft: false
+        prerelease: false
       env:
-        GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
