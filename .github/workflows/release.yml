@@ -6,84 +6,115 @@ on:
       - '*'
 
 jobs:
-  build:
+  # ==================== Job 1: PyInstaller 构建 ====================
+  build-pyinstaller:
     runs-on: windows-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v3
-      
+
     - name: Set up Python 3.8.6
       uses: actions/setup-python@v4
       with:
         python-version: 3.8.6
-        
+
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        # 安装 Nuitka 及其推荐的依赖
-        pip install nuitka ordered-set zstandard
+        # 仅安装 PyInstaller 相关依赖
+        pip install pyinstaller
 
-    # ==================== PyInstaller 构建 ====================
     - name: Build with PyInstaller
       run: |
         pyinstaller classroom_lottery.spec
 
     - name: Prepare PyInstaller Artifacts
       run: |
-        # 将 PyInstaller 的输出移动到 dist_py 目录，避免与 Nuitka 混淆
         mkdir dist_py
         Copy-Item -Path "dist\classroom_lottery\*" -Destination "dist_py\" -Recurse -Force
-        Remove-Item -Path "dist\classroom_lottery" -Recurse -Force
 
-    # ==================== Nuitka 构建 ====================
+    - name: Create PyInstaller Archive
+      shell: pwsh
+      run: |
+        $tag = "${{ github.ref }}".Substring("${{ github.ref }}".LastIndexOf('/') + 1)
+        Compress-Archive -Path dist_py\* -DestinationPath "classroom_lottery_pyinstaller_$tag.zip" -Force
+
+    - name: Upload PyInstaller Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: pyinstaller-artifact
+        path: classroom_lottery_pyinstaller_*.zip
+        # 设置保留时间，避免占用过多存储空间
+        retention-days: 1
+
+  # ==================== Job 2: Nuitka 构建 ====================
+  build-nuitka:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python 3.8.6
+      uses: actions/setup-python@v4
+      with:
+        python-version: 3.8.6
+
+    - name: Install dependencies
+      run: |
+        pip install -r requirements.txt
+        # 安装 Nuitka 及其推荐的依赖
+        pip install nuitka ordered-set zstandard
+
     - name: Build with Nuitka
       run: |
-        # 执行之前编写好的 PowerShell 构建脚本
         powershell -ExecutionPolicy Bypass -File .\build.ps1
 
     - name: Prepare Nuitka Artifacts
       run: |
-        # Nuitka 的产物位于 dist/classroom_lottery/main.dist (或其他命名 .dist)
-        # 我们需要将其内容提取到 dist_nuitka 目录中
         mkdir dist_nuitka
-        
         # 查找 Nuitka 生成的 .dist 目录
         $nuitkaDistDir = Get-ChildItem -Path "dist\classroom_lottery" -Directory -Filter "*.dist" | Select-Object -First 1
         
         if ($nuitkaDistDir) {
             Write-Host "找到 Nuitka 构建目录: $($nuitkaDistDir.FullName)"
-            # 将 .dist 目录内的内容移动到 dist_nuitka/classroom_lottery
             Copy-Item -Path "$($nuitkaDistDir.FullName)\*" -Destination "dist_nuitka\classroom_lottery" -Recurse -Force
         } else {
             Write-Error "未找到 Nuitka 的 .dist 输出目录，构建可能失败。"
             exit 1
         }
 
-    # ==================== 打包 ====================
-    - name: Create Archives
+    - name: Create Nuitka Archive
+      shell: pwsh
       run: |
-        # 获取 tag 名称
         $tag = "${{ github.ref }}".Substring("${{ github.ref }}".LastIndexOf('/') + 1)
-        
-        # 打包 PyInstaller 版本
-        Compress-Archive -Path dist_py\* -DestinationPath "classroom_lottery_pyinstaller_$tag.zip" -Force
-        
-        # 打包 Nuitka 版本
         Compress-Archive -Path dist_nuitka\* -DestinationPath "classroom_lottery_nuitka_$tag.zip" -Force
-        
-        # 查看生成的文件
-        Write-Host "生成的 zip 文件："
-        Get-ChildItem -Path "*.zip" | Format-Table Name, Length
 
-    # ==================== 发布 ====================
+    - name: Upload Nuitka Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: nuitka-artifact
+        path: classroom_lottery_nuitka_*.zip
+        retention-days: 1
+
+  # ==================== Job 3: 发布 ====================
+  release:
+    # 需要等待上述两个构建作业都成功完成后才能运行
+    needs: [build-pyinstaller, build-nuitka]
+    runs-on: windows-latest
+
+    steps:
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
-        # 同时上传两个版本的 zip
+        # 从下载的 artifacts 目录中上传文件
         files: |
-          classroom_lottery_pyinstaller_*.zip
-          classroom_lottery_nuitka_*.zip
+          pyinstaller-artifact/*.zip
+          nuitka-artifact/*.zip
         generate_release_notes: true
         draft: false
         prerelease: false
