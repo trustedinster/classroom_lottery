@@ -43,7 +43,7 @@ jobs:
 
       # 4. 上传到 Gitee
       - name: sync-github-release-to-gitee
-        uses: trustedinster/sync-release-gitee@v1.2
+        uses: trustedinster/sync-release-gitee@v1.3
         with:
           gitee_owner: ${{ env.GITEE_OWNER }}
           gitee_repo: ${{ env.GITEE_REPO }}
