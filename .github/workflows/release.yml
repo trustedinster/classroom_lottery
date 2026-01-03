@@ -12,17 +12,16 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python 3.8.6
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: 3.8.6
 
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        # 仅安装 PyInstaller 相关依赖
         pip install pyinstaller
 
     - name: Build with PyInstaller
@@ -41,11 +40,10 @@ jobs:
         Compress-Archive -Path dist_py\* -DestinationPath "classroom_lottery_pyinstaller_$tag.zip" -Force
 
     - name: Upload PyInstaller Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: pyinstaller-artifact
         path: classroom_lottery_pyinstaller_*.zip
-        # 设置保留时间，避免占用过多存储空间
         retention-days: 1
 
   # ==================== Job 2: Nuitka 构建 ====================
@@ -54,17 +52,16 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
+      uses: actions/checkout@v4
 
     - name: Set up Python 3.8.6
-      uses: actions/setup-python@v4
+      uses: actions/setup-python@v5
       with:
         python-version: 3.8.6
 
     - name: Install dependencies
       run: |
         pip install -r requirements.txt
-        # 安装 Nuitka 及其推荐的依赖
         pip install nuitka ordered-set zstandard
 
     - name: Build with Nuitka
@@ -74,7 +71,6 @@ jobs:
     - name: Prepare Nuitka Artifacts
       run: |
         mkdir dist_nuitka
-        # 查找 Nuitka 生成的 .dist 目录
         $nuitkaDistDir = Get-ChildItem -Path "dist\classroom_lottery" -Directory -Filter "*.dist" | Select-Object -First 1
         
         if ($nuitkaDistDir) {
@@ -92,7 +88,7 @@ jobs:
         Compress-Archive -Path dist_nuitka\* -DestinationPath "classroom_lottery_nuitka_$tag.zip" -Force
 
     - name: Upload Nuitka Artifact
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: nuitka-artifact
         path: classroom_lottery_nuitka_*.zip
@@ -100,18 +96,16 @@ jobs:
 
   # ==================== Job 3: 发布 ====================
   release:
-    # 需要等待上述两个构建作业都成功完成后才能运行
     needs: [build-pyinstaller, build-nuitka]
     runs-on: windows-latest
 
     steps:
     - name: Download all artifacts
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
 
     - name: Release
       uses: softprops/action-gh-release@v1
       with:
-        # 从下载的 artifacts 目录中上传文件
         files: |
           pyinstaller-artifact/*.zip
           nuitka-artifact/*.zip
