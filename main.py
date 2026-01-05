@@ -12,6 +12,7 @@ from random import choice, randint
 from threading import Thread, Lock
 from tempfile import NamedTemporaryFile
 from shutil import move
+import numpy as np
 
 from winsound import SND_ASYNC, SND_FILENAME, PlaySound
 import keyboard
@@ -22,7 +23,6 @@ from PySide2.QtGui import QIcon, QFont, QPalette, QColor, QPixmap, QImage
 from PIL import Image, ImageDraw
 from configparser import ConfigParser
 from argparse import ArgumentParser
-import pyttsx3
 
 # ==================== 全局配置 ====================
 ICON_FILE = 'assets/icon.ico'
@@ -193,6 +193,12 @@ class DataManager:
                     write_thread.join(timeout=2.0)
                     if write_thread.is_alive():
                         logger.warning('数据写入超时，可能存在数据丢失')
+                    
+                    # 确保优化抽样器状态也已保存
+                    try:
+                        optimized_sampler.save_state()
+                    except Exception as e:
+                        logger.error(f'保存优化抽样器状态时发生错误: {str(e)}')
             except Exception as e:
                 logger.error(f'更新统计数据时发生错误: {str(e)}')
 
@@ -201,7 +207,189 @@ class DataManager:
         thread.start()
 
 
+# ==================== 优化的随机点人算法 ====================
+import numpy as np
+
+class OptimizedClassroomSampler:
+    """
+    针对班级随机提问的优化算法 (48人专用版)
+    特性：
+    1. 防止连续点名 (Short-term penalty)
+    2. 防止长期遗漏 (Long-term boost)
+    3. 权重动态平滑调整
+    """
+    def __init__(self, n_students=48, base_weight=0.8, increment=0.4, 
+                 penalty_factor=0.25, boost_factor=1.4, window_size=18,
+                 penalty_rounds=3):
+        """
+        初始化采样器
+        Args:
+            n_students (int): 学生总数，默认为48
+            base_weight (float): 被选中后重置的权重
+            increment (float): 每轮未选中增加的权重
+            penalty_factor (float): 惩罚因子 (0-1)，越小惩罚越重
+            boost_factor (float): 提升因子 (>1)，越大补偿越强
+            window_size (int): 判定"长期未选中"的轮数窗口
+            penalty_rounds (int): 刚被选中后的保护期轮数
+        """
+        self.n = n_students
+        self.base_weight = base_weight
+        self.increment = increment
+        self.penalty_factor = penalty_factor
+        self.boost_factor = boost_factor
+        self.window_size = window_size
+        self.penalty_rounds = penalty_rounds
+        self.reset()
+        
+    def reset(self):
+        """重置所有状态（新学期或新课程开始时调用）"""
+        # 初始化所有学生的权重为基础权重
+        self.weights = np.full(self.n, self.base_weight)
+        # 记录历史
+        self.selection_history = []  # 记录选中的学生ID
+        self.selection_counts = np.zeros(self.n, dtype=int)
+        # 记忆机制状态
+        self.last_selected_times = np.full(self.n, -1000) # 上次被选中的轮次
+        self.current_round = 0
+        # 统计信息
+        self.last_selected = -1
+        
+    def select(self):
+        """
+        执行一次随机选择
+        Returns:
+            int: 被选中的学生ID (索引从0开始)
+        """
+        # --- 1. 计算动态调整后的权重 ---
+        adjusted_weights = self.weights.copy()
+        for i in range(self.n):
+            rounds_gap = self.current_round - self.last_selected_times[i]
+            # 情况A: 刚被选中不久 -> 应用惩罚 (防连续)
+            if rounds_gap < self.penalty_rounds:
+                adjusted_weights[i] *= self.penalty_factor
+            # 情况B: 很久没被选中 -> 应用提升 (防遗漏)
+            elif rounds_gap > self.window_size:
+                adjusted_weights[i] *= self.boost_factor
+
+        # --- 2. 基于权重进行随机选择 ---
+        total_weight = adjusted_weights.sum()
+        if total_weight == 0:
+            # 极端情况保护：均匀分布
+            probs = np.ones(self.n) / self.n
+        else:
+            probs = adjusted_weights / total_weight
+
+        selected = np.random.choice(self.n, p=probs)
+
+        # --- 3. 更新状态 ---
+        # 所有人增加权重
+        self.weights[:] += self.increment
+        # 被选中的人重置权重
+        self.weights[selected] = self.base_weight
+        # 更新选中时间记录
+        self.last_selected_times[selected] = self.current_round
+        # 记录历史
+        self.selection_history.append(selected)
+        self.selection_counts[selected] += 1
+        self.last_selected = selected
+        self.current_round += 1
+        
+        # 保存状态到持久化文件
+        self.save_state()
+
+        return selected
+
+    def save_state(self, filepath='optimized_sampler_state.pkl'):
+        """
+        保存当前状态到持久化文件
+        Args:
+            filepath: 状态文件路径
+        """
+        try:
+            state_data = {
+                'weights': self.weights,
+                'selection_history': self.selection_history,
+                'selection_counts': self.selection_counts,
+                'last_selected_times': self.last_selected_times,
+                'current_round': self.current_round,
+                'last_selected': self.last_selected
+            }
+            with open(filepath, 'wb') as f:
+                pickle.dump(state_data, f)
+        except Exception as e:
+            logger.error(f'保存优化抽样器状态失败: {str(e)}')
+
+    def load_state(self, filepath='optimized_sampler_state.pkl'):
+        """
+        从持久化文件加载状态
+        Args:
+            filepath: 状态文件路径
+        """
+        try:
+            with open(filepath, 'rb') as f:
+                state_data = pickle.load(f)
+                self.weights = state_data['weights']
+                self.selection_history = state_data['selection_history']
+                self.selection_counts = state_data['selection_counts']
+                self.last_selected_times = state_data['last_selected_times']
+                self.current_round = state_data['current_round']
+                self.last_selected = state_data['last_selected']
+                return True
+        except FileNotFoundError:
+            return False
+        except Exception as e:
+            logger.error(f'加载优化抽样器状态失败: {str(e)}')
+            return False
+
+    def get_dashboard_data(self):
+        """获取当前状态数据，用于界面展示"""
+        if self.current_round == 0:
+            return None
+        expected = self.current_round / self.n
+        variance = np.var(self.selection_counts)
+        return {
+            "current_round": self.current_round,
+            "weights": self.weights,
+            "selection_counts": self.selection_counts,
+            "expected_count": expected,
+            "fairness_index": 1.0 / (1.0 + variance) if expected > 0 else 0
+        }
+
+# 创建优化的抽样器实例
+optimized_sampler = OptimizedClassroomSampler(n_students=MAX_NUMBER - MIN_NUMBER + 1)
+
+# 尝试从持久化数据加载状态
+try:
+    with open('optimized_sampler_state.pkl', 'rb') as f:
+        state_data = pickle.load(f)
+        optimized_sampler.weights = state_data['weights']
+        optimized_sampler.selection_history = state_data['selection_history']
+        optimized_sampler.selection_counts = state_data['selection_counts']
+        optimized_sampler.last_selected_times = state_data['last_selected_times']
+        optimized_sampler.current_round = state_data['current_round']
+        optimized_sampler.last_selected = state_data['last_selected']
+        logger.info('成功从持久化文件加载优化抽样器状态')
+except FileNotFoundError:
+    logger.info('未找到持久化状态文件，使用默认初始状态')
+    # 运行预热，让权重分布进入稳定状态
+    for _ in range(MAX_NUMBER - MIN_NUMBER + 1):
+        optimized_sampler.select()
+except Exception as e:
+    logger.error(f'加载持久化状态失败: {str(e)}，使用默认初始状态')
+    # 运行预热，让权重分布进入稳定状态
+    for _ in range(MAX_NUMBER - MIN_NUMBER + 1):
+        optimized_sampler.select()
+
 # ==================== 号数抽取逻辑 ====================
+def reset_optimized_sampler():
+    """重置优化的抽样器，用于新学期或特殊情况"""
+    global optimized_sampler
+    optimized_sampler = OptimizedClassroomSampler(n_students=MAX_NUMBER - MIN_NUMBER + 1)
+    # 运行预热，让权重分布进入稳定状态
+    for _ in range(MAX_NUMBER - MIN_NUMBER + 1):
+        optimized_sampler.select()
+    logger.info('优化抽样器已重置并完成预热')
+
 def get_random_number():
     global data_manager, student_mode_used_numbers
 
@@ -210,8 +398,11 @@ def get_random_number():
     elif STUDENT_MODE == 2:
         return get_student_mode_number_reverse()
 
-    selected_number = randint(MIN_NUMBER, MAX_NUMBER)
-    logger.info(f'全随机模式抽中号数：{selected_number}（降级模式：{data_manager.degraded}）')
+    # 使用优化的随机点人算法
+    selected_index = optimized_sampler.select()
+    selected_number = selected_index + MIN_NUMBER  # 将索引转换为实际号码
+    
+    logger.info(f'优化随机模式抽中号数：{selected_number}（降级模式：{data_manager.degraded}）')
     return selected_number
 
 
@@ -572,10 +763,7 @@ if __name__ == '__main__':
     try:
         main()
     except Exception as e:
-        if logger:
-            logger.critical(f'程序崩溃：{str(e)}', exc_info=True)
-        else:
-            print(f'程序崩溃：{str(e)}')
+        logger.critical(f'程序崩溃：{str(e)}', exc_info=True)
         try:
             msg_box = QMessageBox()
             msg_box.setIcon(QMessageBox.Critical)

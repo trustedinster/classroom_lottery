@@ -313,12 +313,6 @@ class LauncherApp(QMainWindow):
 
     def import_student_list(self):
         """导入学生名单文件(CSV或XLSX)"""
-        try:
-            import pandas as pd
-        except ImportError:
-            QMessageBox.critical(self, "错误", "缺少必要的库: pandas")
-            return
-
         file_path, _ = QFileDialog.getOpenFileName(
             self,
             "选择学生名单文件",
@@ -329,52 +323,50 @@ class LauncherApp(QMainWindow):
         if not file_path:
             return
 
+        student_dict = {}
+        
         try:
-            # 读取文件
             if file_path.endswith('.csv'):
-                df = pd.read_csv(file_path, encoding='utf-8')
-            else:
-                df = pd.read_excel(file_path)
-
-            # 检查列名
-            if len(df.columns) < 2:
-                QMessageBox.critical(self, "错误", "文件至少需要两列（学号和姓名）")
-                return
-
-            # 获取学号和姓名列
-            student_dict = {}
-            # 尝试识别列名
-            if '学号' in df.columns and '姓名' in df.columns:
-                number_col, name_col = '学号', '姓名'
-            elif 'number' in [col.lower() for col in df.columns] and 'name' in [col.lower() for col in df.columns]:
-                number_col = [col for col in df.columns if col.lower() == 'number'][0]
-                name_col = [col for col in df.columns if col.lower() == 'name'][0]
-            else:
-                # 默认使用前两列
-                number_col, name_col = df.columns[0], df.columns[1]
-
-            # 构建字典
-            for _, row in df.iterrows():
-                try:
-                    number = int(row[number_col])
-                    name = str(row[name_col]).strip()
-                    if name:  # 只有姓名非空才添加
-                        student_dict[number] = name
-                except (ValueError, KeyError):
-                    continue
-
+                # 读取CSV文件
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    import csv
+                    csv_reader = csv.reader(f)
+                    header = next(csv_reader, None)  # 跳过标题行
+                    for row in csv_reader:
+                        if len(row) >= 2:
+                            try:
+                                number = int(row[0])
+                                name = row[1].strip()
+                                if name:
+                                    student_dict[number] = name
+                            except (ValueError, IndexError):
+                                continue
+            else:  # Excel文件
+                import openpyxl
+                wb = openpyxl.load_workbook(file_path)
+                ws = wb.active
+                for row in ws.iter_rows(min_row=2, values_only=True):  # 跳过标题行
+                    if len(row) >= 2:
+                        try:
+                            number = int(row[0])
+                            name = str(row[1]).strip() if row[1] is not None else ""
+                            if name:
+                                student_dict[number] = name
+                        except (ValueError, TypeError):
+                            continue
+        
             if not student_dict:
                 QMessageBox.critical(self, "错误", "未能从文件中提取有效的学生信息")
                 return
-
+        
             # 保存到JSON文件
             with open('students.json', 'w', encoding='utf-8') as f:
                 json.dump(student_dict, f, ensure_ascii=False, indent=2)
-
+        
             QMessageBox.information(self, "成功", f"成功导入{len(student_dict)}名学生信息")
             # 更新显示
             self.student_info_label.setText(f"已成功加载{len(student_dict)}名学生的信息")
-
+        
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导入失败: {str(e)}")
 

@@ -2,7 +2,7 @@ name: Sync GitHub Release to Gitee
 
 on:
   release:
-    types: [published]
+    types: [published, edited]
   workflow_dispatch:
 
 env:

@@ -170,7 +170,6 @@ a_launcher = Analysis(
         'configparser',
         'subprocess',
         'psutil',
-        'pandas',
         'openpyxl',
         'json',
         'glob',
@@ -178,6 +177,7 @@ a_launcher = Analysis(
         'time',
         'os',
         'pathlib',
+        'csv',
     ],
     hookspath=[],
     hooksconfig={},
@@ -192,6 +192,7 @@ a_launcher = Analysis(
         'winsound',
         'keyboard',
         'tqdm',
+        'pandas',  # 移除pandas依赖，启动器现在使用openpyxl和csv
     ],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,

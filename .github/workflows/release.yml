@@ -6,7 +6,7 @@ on:
       - '*'
 
 jobs:
-  # ==================== Job 1: PyInstaller 构建 ====================
+  # ==================== Job 1: PyInstaller 快速构建 ====================
   build-pyinstaller:
     runs-on: windows-latest
 
@@ -25,6 +25,7 @@ jobs:
         pip install pyinstaller
 
     - name: Build with PyInstaller
+      # spec文件内部已经处理了多程序一同构建并合并，无需拆分
       run: |
         pyinstaller classroom_lottery.spec
 
@@ -44,11 +45,41 @@ jobs:
       with:
         name: pyinstaller-artifact
         path: classroom_lottery_pyinstaller_*.zip
-        retention-days: 1
+        retention-days: 7
 
-  # ==================== Job 2: Nuitka 构建 ====================
+  # ==================== Job 2: PyInstaller 独立发布 (不等待 Nuitka) ====================
+  release-pyinstaller:
+    needs: [build-pyinstaller]
+    runs-on: windows-latest
+    permissions:
+      contents: write
+
+    steps:
+    - name: Download PyInstaller Artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: pyinstaller-artifact
+
+    - name: Release PyInstaller Version
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          *.zip
+        generate_release_notes: true
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ==================== Job 3: Nuitka 矩阵并行构建 ====================
   build-nuitka:
     runs-on: windows-latest
+    # 即使其中一个任务失败，其他的也会继续运行，最大限度利用 CI 时间
+    strategy:
+      fail-fast: false
+      matrix:
+        # 对应 build.ps1 中的 -Target 参数
+        target: [main, daemon, launcher, update]
 
     steps:
     - name: Checkout code
@@ -64,52 +95,120 @@ jobs:
         pip install -r requirements.txt
         pip install nuitka ordered-set zstandard
 
-    - name: Build with Nuitka
+    - name: Build Nuitka Target (${{ matrix.target }})
+      # 调用 build.ps1 并传入 -Target 参数，实现单程序构建
       run: |
-        powershell -ExecutionPolicy Bypass -File .\build.ps1
+        powershell -ExecutionPolicy Bypass -File .\build.ps1 -Target ${{ matrix.target }}
 
-    - name: Prepare Nuitka Artifacts
+    - name: Prepare Single Artifact
+      shell: pwsh
       run: |
-        mkdir dist_nuitka
-        $nuitkaDistDir = Get-ChildItem -Path "dist\classroom_lottery" -Directory -Filter "*.dist" | Select-Object -First 1
+        # Nuitka 默认输出在 dist/<ScriptName>.dist
+        # 我们需要把里面的内容提取出来打包
+        $distFolder = "dist\${{ matrix.target }}.dist"
         
-        if ($nuitkaDistDir) {
-            Write-Host "找到 Nuitka 构建目录: $($nuitkaDistDir.FullName)"
-            Copy-Item -Path "$($nuitkaDistDir.FullName)\*" -Destination "dist_nuitka\classroom_lottery" -Recurse -Force
+        if (Test-Path $distFolder) {
+            # 直接打包 .dist 目录下的所有内容
+            Compress-Archive -Path "$distFolder\*" -DestinationPath "nuitka_part_${{ matrix.target }}.zip" -Force
         } else {
-            Write-Error "未找到 Nuitka 的 .dist 输出目录，构建可能失败。"
+            Write-Error "未找到构建目录: $distFolder"
             exit 1
         }
 
-    - name: Create Nuitka Archive
-      shell: pwsh
-      run: |
-        $tag = "${{ github.ref }}".Substring("${{ github.ref }}".LastIndexOf('/') + 1)
-        Compress-Archive -Path dist_nuitka\* -DestinationPath "classroom_lottery_nuitka_$tag.zip" -Force
-
-    - name: Upload Nuitka Artifact
+    - name: Upload Nuitka Part Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: nuitka-artifact
-        path: classroom_lottery_nuitka_*.zip
-        retention-days: 1
+        name: nuitka-part-${{ matrix.target }}
+        path: nuitka_part_${{ matrix.target }}.zip
+        retention-days: 7
 
-  # ==================== Job 3: 发布 ====================
-  release:
-    needs: [build-pyinstaller, build-nuitka]
+  # ==================== Job 4: Nuitka 合并与追加发布 ====================
+  merge-and-release-nuitka:
+    needs: [build-nuitka]
     runs-on: windows-latest
+    permissions:
+      contents: write
 
     steps:
-    - name: Download all artifacts
+    - name: Download All Nuitka Parts
+      # 不指定 name，下载当前 workflow 的所有 artifacts
       uses: actions/download-artifact@v4
 
-    - name: Release
+    - name: Merge Nuitka Parts
+      shell: pwsh
+      run: |
+        Write-Host "开始合并 Nuitka 构建产物..." -ForegroundColor Cyan
+        
+        # 创建最终合并目录
+        $FinalDir = "classroom_lottery_merged"
+        New-Item -ItemType Directory -Path $FinalDir -Force | Out-Null
+
+        # 遍历所有下载的 part zip 包
+        Get-ChildItem -Filter "nuitka_part_*.zip" | ForEach-Object {
+            Write-Host "正在处理: $($_.Name)" -ForegroundColor Gray
+            
+            # 临时解压目录
+            $TempExtract = "temp_extract_$($_.BaseName)"
+            Expand-Archive -Path $_.FullName -DestinationPath $TempExtract -Force
+
+            # 1. 移动所有 EXE 到根目录
+            $Exes = Get-ChildItem -Path $TempExtract -Filter "*.exe"
+            foreach ($Exe in $Exes) {
+                Copy-Item -Path $Exe.FullName -Destination "$FinalDir\$($Exe.Name)" -Force
+            }
+
+            # 2. 移动所有依赖文件 (dll, pyd) 到根目录 (跳过已存在的)
+            $Deps = Get-ChildItem -Path $TempExtract -File | Where-Object { $_.Extension -in @('.dll', '.pyd', '.so') }
+            foreach ($Dep in $Deps) {
+                $Dest = "$FinalDir\$($Dep.Name)"
+                if (-not (Test-Path $Dest)) {
+                    Copy-Item -Path $Dep.FullName -Destination $Dest -Force
+                }
+            }
+
+            # 3. 处理 assets 文件夹
+            if (Test-Path "$TempExtract\assets") {
+                $DestAssets = "$FinalDir\assets"
+                if (-not (Test-Path $DestAssets)) {
+                    Copy-Item -Path "$TempExtract\assets" -Destination $DestAssets -Recurse -Force
+                } else {
+                    # 合并 assets 内容
+                    Get-ChildItem -Path "$TempExtract\assets" -Recurse | ForEach-Object {
+                        $RelativePath = $_.FullName.Substring("$TempExtract\assets".Length + 1)
+                        $FinalTarget = "$FinalDir\assets\$RelativePath"
+                        $TargetDir = Split-Path -Parent $FinalTarget
+                        if (-not (Test-Path $TargetDir)) { New-Item -ItemType Directory -Path $TargetDir -Force | Out-Null }
+                        Copy-Item -Path $_.FullName -Destination $FinalTarget -Force
+                    }
+                }
+            }
+            
+            # 4. 处理 lib 文件夹 (如果存在)
+            if (Test-Path "$TempExtract\lib") {
+                 $DestLib = "$FinalDir\lib"
+                 # 类似 assets 的合并逻辑，简化处理：直接复制，覆盖也没事
+                 Copy-Item -Path "$TempExtract\lib" -Destination $FinalDir -Recurse -Force
+            }
+
+            # 清理临时文件
+            Remove-Item -Path $TempExtract -Recurse -Force
+        }
+
+        # 最终打包
+        $tag = "${{ github.ref }}".Substring("${{ github.ref }}".LastIndexOf('/') + 1)
+        Compress-Archive -Path "$FinalDir\*" -DestinationPath "classroom_lottery_nuitka_$tag.zip" -Force
+        
+        # 清理 workspace，只保留最终 zip
+        Get-ChildItem -Exclude "*.zip" | Remove-Item -Recurse -Force
+        Get-ChildItem -Filter "nuitka_part_*.zip" | Remove-Item -Force
+
+    - name: Release Nuitka Version (Append)
       uses: softprops/action-gh-release@v1
       with:
         files: |
-          pyinstaller-artifact/*.zip
-          nuitka-artifact/*.zip
-        generate_release_notes: true
+          classroom_lottery_nuitka_*.zip
+        # 不更新 release notes，避免覆盖 PyInstaller 生成的信息
+        generate_release_notes: false
         draft: false
         prerelease: false
       env:
