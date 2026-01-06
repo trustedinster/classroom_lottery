@@ -237,7 +237,7 @@ jobs:
         New-Item -ItemType Directory -Path $FinalDir -Force | Out-Null
 
         # 遍历所有下载的 part zip 包
-        Get-ChildItem -Filter "nuitka_part_*.zip" | ForEach-Object {
+        Get-ChildItem -Filter "nuitka-part-*.zip" | ForEach-Object {
             Write-Host "正在处理: $($_.Name)" -ForegroundColor Gray
             
             # 临时解压目录
