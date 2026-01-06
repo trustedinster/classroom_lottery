@@ -70,6 +70,7 @@ a_main = Analysis(
         'PySide2.QtCore',
         'PySide2.QtGui',
         'PySide2.QtWidgets',
+        'pyttsx3',
         'pyttsx3.drivers',
         'pyttsx3.drivers.dummy',
         'pyttsx3.drivers.espeak',
