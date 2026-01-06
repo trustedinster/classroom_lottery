@@ -25,14 +25,19 @@ jobs:
         pip install pyinstaller
 
     - name: Build with PyInstaller
-      # spec文件内部已经处理了多程序一同构建并合并，无需拆分
       run: |
         pyinstaller classroom_lottery.spec
 
     - name: Prepare PyInstaller Artifacts
       run: |
         mkdir dist_py
+        # 复制 PyInstaller 构建输出
         Copy-Item -Path "dist\classroom_lottery\*" -Destination "dist_py\" -Recurse -Force
+        
+        # 确保 assets 目录存在并复制必要文件
+        mkdir dist_py\assets -ErrorAction SilentlyContinue
+        Copy-Item -Path "assets\rise_enable.wav" -Destination "dist_py\assets\" -Force
+        Copy-Item -Path "assets\icon.ico" -Destination "dist_py\assets\" -Force
 
     - name: Create PyInstaller Archive
       shell: pwsh
@@ -47,7 +52,7 @@ jobs:
         path: classroom_lottery_pyinstaller_*.zip
         retention-days: 7
 
-  # ==================== Job 2: PyInstaller 独立发布 (不等待 Nuitka) ====================
+  # ==================== Job 2: PyInstaller 独立发布 ====================
   release-pyinstaller:
     needs: [build-pyinstaller]
     runs-on: windows-latest
@@ -71,15 +76,42 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ==================== Job 3: Nuitka 矩阵并行构建 ====================
+  # ==================== Job 3: Nuitka 矩阵并行构建 (去脚本化) ====================
   build-nuitka:
     runs-on: windows-latest
-    # 即使其中一个任务失败，其他的也会继续运行，最大限度利用 CI 时间
     strategy:
       fail-fast: false
       matrix:
-        # 对应 build.ps1 中的 -Target 参数
-        target: [main, daemon, launcher, update]
+        # 将原 build.ps1 中的配置直接转换为 CI 矩阵参数
+        include:
+          - name: main
+            script: main.py
+            icon: assets/icon.ico
+            plugin: pyside2
+            console: disable
+            includes: pyttsx3,pyttsx3.drivers,keyboard,PIL,psutil
+            excludes: matplotlib,notebook,jupyter,IPython,pytest,sphinx,pandas
+          - name: daemon
+            script: daemon.py
+            icon: assets/daemon.ico
+            plugin: ""
+            console: disable
+            includes: psutil
+            excludes: PySide2,PIL,pyttsx3,winsound,keyboard,matplotlib,notebook,jupyter,IPython,pandas
+          - name: launcher
+            script: launcher.py
+            icon: assets/launcher.ico
+            plugin: pyside2
+            console: disable
+            includes: psutil,openpyxl
+            excludes: matplotlib,pyttsx3,winsound,keyboard,pandas,notebook,jupyter,IPython
+          - name: update
+            script: update.py
+            icon: assets/update.ico
+            plugin: pyside2
+            console: disable
+            includes: requests,tqdm,psutil
+            excludes: matplotlib,pyttsx3,winsound,keyboard,PIL,pandas,notebook,jupyter,IPython
 
     steps:
     - name: Checkout code
@@ -95,21 +127,83 @@ jobs:
         pip install -r requirements.txt
         pip install nuitka ordered-set zstandard
 
-    - name: Build Nuitka Target (${{ matrix.target }})
-      # 调用 build.ps1 并传入 -Target 参数，实现单程序构建
+    - name: Build Nuitka Target (${{ matrix.name }})
+      shell: pwsh
       run: |
-        powershell -ExecutionPolicy Bypass -File .\build.ps1 -Target ${{ matrix.target }}
+        # --- 参数准备 ---
+        $includes = "${{ matrix.includes }}".Split(',') | Where-Object { $_ -ne "" }
+        $excludes = "${{ matrix.excludes }}".Split(',') | Where-Object { $_ -ne "" }
+        
+        # --- 版本号逻辑 ---
+        $version = "1.0.0.0"
+        $verFile = "version_info_${{ matrix.name }}.txt"
+        if (-not (Test-Path $verFile)) { $verFile = "version_info.txt" }
+        if (Test-Path $verFile) { 
+            $content = Get-Content $verFile -TotalCount 1
+            if ($content -match "^\d+\.\d+\.\d+\.\d+$") { $version = $content }
+        }
+        Write-Host "Using Version: $version"
+
+        # --- 图标路径逻辑 ---
+        $iconPath = "${{ matrix.icon }}"
+        if (-not (Test-Path $iconPath)) { 
+            Write-Warning "特定图标未找到: $iconPath，尝试默认图标。"
+            $iconPath = "assets/icon.ico"
+            if (-not (Test-Path $iconPath)) { $iconPath = $null }
+        }
+
+        # --- 构建 Nuitka 参数列表 ---
+        $nuitkaArgs = @(
+            "--standalone"
+            "--output-dir=dist"
+            "--remove-output"
+            "--assume-yes-for-downloads"
+            "--lto=yes"
+            "--windows-console-mode=${{ matrix.console }}"
+        )
+
+        # 插件
+        if ("${{ matrix.plugin }}" -ne "") {
+            $nuitkaArgs += "--enable-plugin=${{ matrix.plugin }}"
+        }
+
+        # 图标
+        if ($iconPath) {
+            $nuitkaArgs += "--windows-icon-from-ico=$iconPath"
+        }
+
+        # 版本
+        $nuitkaArgs += "--windows-file-version=$version"
+        $nuitkaArgs += "--windows-product-version=$version"
+        
+        # --- 资源文件处理 (仅包含指定文件) ---
+        $nuitkaArgs += "--include-data-files=assets/rise_enable.wav=assets/rise_enable.wav"
+        $nuitkaArgs += "--include-data-files=assets/icon.ico=assets/icon.ico"
+
+        # 包含包
+        foreach ($inc in $includes) { $nuitkaArgs += "--include-package=$inc" }
+        
+        # 排除包
+        foreach ($exc in $excludes) { $nuitkaArgs += "--nofollow-import-to=$exc" }
+        
+        # 目标脚本
+        $nuitkaArgs += "${{ matrix.script }}"
+        
+        # --- 执行构建 ---
+        Write-Host "Executing: python -m nuitka @nuitkaArgs"
+        & python -m nuitka @nuitkaArgs
+        
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
     - name: Prepare Single Artifact
       shell: pwsh
       run: |
-        # Nuitka 默认输出在 dist/<ScriptName>.dist
-        # 我们需要把里面的内容提取出来打包
-        $distFolder = "dist\${{ matrix.target }}.dist"
+        # Nuitka 默认输出在 dist/<ScriptName>.dist (如 main.dist)
+        $distFolder = "dist\${{ matrix.name }}.dist"
         
         if (Test-Path $distFolder) {
             # 直接打包 .dist 目录下的所有内容
-            Compress-Archive -Path "$distFolder\*" -DestinationPath "nuitka_part_${{ matrix.target }}.zip" -Force
+            Compress-Archive -Path "$distFolder\*" -DestinationPath "nuitka_part_${{ matrix.name }}.zip" -Force
         } else {
             Write-Error "未找到构建目录: $distFolder"
             exit 1
@@ -118,8 +212,8 @@ jobs:
     - name: Upload Nuitka Part Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: nuitka-part-${{ matrix.target }}
-        path: nuitka_part_${{ matrix.target }}.zip
+        name: nuitka-part-${{ matrix.name }}
+        path: nuitka_part_${{ matrix.name }}.zip
         retention-days: 7
 
   # ==================== Job 4: Nuitka 合并与追加发布 ====================
@@ -131,7 +225,6 @@ jobs:
 
     steps:
     - name: Download All Nuitka Parts
-      # 不指定 name，下载当前 workflow 的所有 artifacts
       uses: actions/download-artifact@v4
 
     - name: Merge Nuitka Parts
@@ -166,13 +259,12 @@ jobs:
                 }
             }
 
-            # 3. 处理 assets 文件夹
+            # 3. 处理 assets 文件夹 (只包含 rise_enable.wav 和 icon.ico)
             if (Test-Path "$TempExtract\assets") {
                 $DestAssets = "$FinalDir\assets"
                 if (-not (Test-Path $DestAssets)) {
-                    Copy-Item -Path "$TempExtract\assets" -Destination $DestAssets -Recurse -Force
+                    Copy-Item -Path "$TempExtract\assets" -Destination $FinalDir -Recurse -Force
                 } else {
-                    # 合并 assets 内容
                     Get-ChildItem -Path "$TempExtract\assets" -Recurse | ForEach-Object {
                         $RelativePath = $_.FullName.Substring("$TempExtract\assets".Length + 1)
                         $FinalTarget = "$FinalDir\assets\$RelativePath"
@@ -186,7 +278,6 @@ jobs:
             # 4. 处理 lib 文件夹 (如果存在)
             if (Test-Path "$TempExtract\lib") {
                  $DestLib = "$FinalDir\lib"
-                 # 类似 assets 的合并逻辑，简化处理：直接复制，覆盖也没事
                  Copy-Item -Path "$TempExtract\lib" -Destination $FinalDir -Recurse -Force
             }
 
@@ -207,7 +298,6 @@ jobs:
       with:
         files: |
           classroom_lottery_nuitka_*.zip
-        # 不更新 release notes，避免覆盖 PyInstaller 生成的信息
         generate_release_notes: false
         draft: false
         prerelease: false

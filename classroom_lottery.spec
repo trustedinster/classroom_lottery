@@ -98,7 +98,6 @@ a_main = Analysis(
     runtime_hooks=[],
     excludes=[
         'matplotlib',
-        'numpy',
         'pandas',
         'scipy',
         'notebook',
