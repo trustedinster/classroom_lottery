@@ -20,19 +20,14 @@ from PySide2.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
 from PySide2.QtCore import Qt, Signal, QThread, QObject
 from PySide2.QtGui import QTextCursor, QFont
 
-THIS_VERSION = "v3.5"
-# 修复PyInstaller打包后argparse报错的问题
-# 当stderr为None时，创建一个虚拟的stderr对象
+THIS_VERSION = "v3.7"
 if not sys.stderr:
     class DummyWriter:
         def write(self, data):
-            logger.error(f"stderr output: {data}")
+            pass
         def flush(self):
             pass
-    sys.stderr = DummyWriter()
-
 # ==================== 枚举与配置 ====================
-
 class VersionType(Enum):
     """版本类型枚举"""
     PYINSTALLER = "pyinstaller"
@@ -294,40 +289,82 @@ class UpdateChecker:
             with zipfile.ZipFile(zip_filepath, 'r') as zip_ref:
                 zip_ref.extractall(temp_dir)
 
-            self._log("解压完成，开始安装...")
-
-            file_count = 0
-            for root, dirs, files in os.walk(temp_dir):
-                rel_path = os.path.relpath(root, temp_dir)
-                dest_path = os.path.join(self.work_dir, rel_path) if rel_path != "." else self.work_dir
-
-                if not os.path.exists(dest_path):
-                    os.makedirs(dest_path)
-
-                for file in files:
-                    src_file = os.path.join(root, file)
-                    dest_file = os.path.join(dest_path, file)
-
-                    if self.debug_mode and file.endswith('.exe'):
-                        py_file = file.replace('.exe', '.py')
-                        py_src_file = os.path.join(os.path.dirname(src_file), py_file)
-                        if os.path.exists(py_src_file):
-                            shutil.copy2(py_src_file, dest_file.replace('.exe', '.py'))
-                        else:
-                            shutil.copy2(src_file, dest_file)
-                    else:
-                        shutil.copy2(src_file, dest_file)
-
-                    file_count += 1
-                    if file_count % 10 == 0 and self.progress_callback:
-                        self.progress_callback(file_count, file_count)
-
-            shutil.rmtree(temp_dir)
-            self._log("安装完成!")
-            return True
+            self._log("解压完成，准备创建批处理脚本进行替换...")
+            
+            # 创建批处理脚本来替换文件
+            bat_content = self._create_update_bat(temp_dir)
+            bat_path = os.path.join(self.work_dir, "update_files.bat")
+            
+            with open(bat_path, "w", encoding="utf-8") as f:
+                f.write(bat_content)
+            
+            self._log("批处理脚本已创建，执行脚本进行更新...")
+            
+            # 执行批处理脚本
+            import subprocess
+            result = subprocess.run([bat_path], shell=True, capture_output=True, text=True)
+            
+            if result.returncode == 0:
+                self._log("批处理脚本执行成功!")
+                
+                # 清理临时文件
+                if os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir)
+                
+                # 删除批处理脚本
+                if os.path.exists(bat_path):
+                    os.remove(bat_path)
+                
+                self._log("安装完成!")
+                return True
+            else:
+                self._log(f"批处理脚本执行失败: {result.stderr}")
+                return False
+                
         except Exception as e:
             self._log(f"安装失败: {e}")
             return False
+
+    def _create_update_bat(self, temp_dir: str) -> str:
+        """创建批处理脚本来更新文件，特别是处理_internal目录中的文件"""
+        
+        # 收集需要替换的文件
+        update_commands = []
+        
+        # 遍历临时目录中的所有文件
+        for root, dirs, files in os.walk(temp_dir):
+            rel_path = os.path.relpath(root, temp_dir)
+            
+            for file in files:
+                src_file = os.path.join(root, file).replace("/", "\\").replace("\\\\", "\\")
+                
+                # 计算目标路径
+                if rel_path != ".":
+                    dest_dir = os.path.join(self.work_dir, rel_path).replace("/", "\\").replace("\\\\", "\\")
+                    dest_file = os.path.join(dest_dir, file).replace("/", "\\").replace("\\\\", "\\")
+                else:
+                    dest_dir = self.work_dir.replace("/", "\\").replace("\\\\", "\\")
+                    dest_file = os.path.join(dest_dir, file).replace("/", "\\").replace("\\\\", "\\")
+                
+                # 确保目标目录存在
+                update_commands.append(f'if not exist "{dest_dir}" mkdir "{dest_dir}"')
+                
+                # 复制文件命令
+                update_commands.append(f'copy /Y "{src_file}" "{dest_file}"')
+        
+        # 构建批处理脚本内容
+        bat_content = "@echo off\n"
+        bat_content += "chcp 65001 >nul\n"  # 设置UTF-8编码
+        bat_content += "echo 开始更新文件...\n\n"
+        
+        for cmd in update_commands:
+            bat_content += cmd + "\n"
+        
+        bat_content += "\necho 文件更新完成!\n"
+        bat_content += "timeout /t 2 /nobreak >nul\n"
+        bat_content += "exit /b 0\n"
+        
+        return bat_content
 
 
 # ==================== GUI 组件 ====================
@@ -456,7 +493,7 @@ class UpdateWorker(QThread):
 
 
 class UpdateWindow(QMainWindow):
-    def __init__(self, debug=False, mirror_only=False, auto_download=False, unzip_only=False):
+    def __init__(self, debug=False, mirror_only=False, auto_download=False):
         super().__init__()
         self.setWindowTitle(f"课堂抽号程序更新工具 v{THIS_VERSION}")
         self.resize(900, 600)
@@ -464,7 +501,6 @@ class UpdateWindow(QMainWindow):
         self.debug_mode = debug
         self.mirror_only = mirror_only
         self.auto_download = auto_download
-        self.unzip_only = unzip_only
 
         self.current_best_source = None
         self.current_filename = None
@@ -486,10 +522,7 @@ class UpdateWindow(QMainWindow):
         self.connect_signals()
         self.init_ui()
 
-        if self.unzip_only:
-            self.handle_unzip_only()
-        else:
-            self.worker.run_check()
+        self.worker.run_check()
 
     def init_ui(self):
         central_widget = QWidget()
@@ -581,26 +614,6 @@ class UpdateWindow(QMainWindow):
     def on_check_click(self):
         self.worker.run_check()
 
-    def handle_unzip_only(self):
-        work_dir = "./debug" if self.debug_mode else "."
-        zip_files = []
-        if os.path.exists(work_dir):
-            for file in os.listdir(work_dir):
-                if file.startswith("classroom_lottery_") and file.endswith(".zip"):
-                    zip_files.append(file)
-
-        if not zip_files:
-            QMessageBox.warning(self, "错误", "未找到合法的zip文件")
-            self.btn_check.setEnabled(True)
-            return
-
-        selected_file = zip_files[0]
-        if len(zip_files) > 1:
-            self.append_log(f"找到多个文件，默认选择: {selected_file}")
-
-        self.current_filename = selected_file
-        self.start_install()
-
     def start_download(self):
         if not self.current_best_source:
             return
@@ -630,7 +643,15 @@ class UpdateWindow(QMainWindow):
                     shutil.copy2("update.exe", "update_old.exe")
                     self.append_log("已复制 update.exe 为 update_old.exe")
                     import subprocess
-                    subprocess.Popen(["update_old.exe", "--unzip-only"])
+                    # 创建一个批处理脚本来处理更新并在其中启动主程序
+                    update_bat_content = self._create_self_update_bat()
+                    update_bat_path = os.path.join(self.work_dir, "self_update.bat")
+                    
+                    with open(update_bat_path, "w", encoding="utf-8") as f:
+                        f.write(update_bat_content)
+                    
+                    # 启动批处理脚本后退出主程序
+                    subprocess.Popen(["cmd", "/c", "start", "cmd", "/c", f'"{update_bat_path}"'])
                     self.append_log("已启动更新安装程序，主程序即将退出。")
                     QTimer.singleShot(2000, QApplication.quit)
                 except Exception as e:
@@ -734,7 +755,6 @@ def main():
 
     parser = argparse.ArgumentParser(description="课堂抽号程序更新工具 (GUI版)")
     parser.add_argument('-y', '--auto-download', action='store_true', help="自动下载，无需确认")
-    parser.add_argument('--unzip-only', action='store_true', help="仅解压目录下已有的合法zip文件")
     parser.add_argument('--debug', action='store_true', help="调试模式，工作目录为./debug")
     parser.add_argument('--mirror-only', action='store_true', help="优先使用镜像站下载GitHub资源")
     parser.add_argument('--version-type', choices=['pyinstaller', 'nuitka'], default=None,
@@ -757,8 +777,7 @@ def main():
     window = UpdateWindow(
         debug=args.debug,
         mirror_only=args.mirror_only,
-        auto_download=args.auto_download,
-        unzip_only=args.unzip_only
+        auto_download=args.auto_download
     )
     window.show()
 
