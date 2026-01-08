@@ -188,7 +188,6 @@ a_launcher = Analysis(
         'notebook',
         'jupyter',
         'IPython',
-        'pyttsx3',
         'winsound',
         'keyboard',
         'tqdm',

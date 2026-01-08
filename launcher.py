@@ -388,8 +388,6 @@ class LauncherApp(QMainWindow):
         # 先保存配置
         self.save_config()
 
-
-
         # 查找守护进程
         daemon_exe = self.find_daemon_exe()
         if not daemon_exe:
@@ -410,8 +408,7 @@ class LauncherApp(QMainWindow):
                 return
 
         try:
-            # 默认使用main.py作为程序路径
-            exe_path = 'main.py'
+            exe_path = '课堂抽号程序.exe'
             # 获取模式值
             mode_value = self.mode_combo.currentData()
             # 构建传递给主程序的参数
