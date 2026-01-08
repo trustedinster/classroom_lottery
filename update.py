@@ -21,7 +21,15 @@ from PySide2.QtCore import Qt, Signal, QThread, QObject
 from PySide2.QtGui import QTextCursor, QFont
 
 THIS_VERSION = "v3.5"
-
+# 修复PyInstaller打包后argparse报错的问题
+# 当stderr为None时，创建一个虚拟的stderr对象
+if not sys.stderr:
+    class DummyWriter:
+        def write(self, data):
+            logger.error(f"stderr output: {data}")
+        def flush(self):
+            pass
+    sys.stderr = DummyWriter()
 
 # ==================== 枚举与配置 ====================
 

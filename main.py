@@ -13,6 +13,7 @@ from threading import Thread, Lock
 from tempfile import NamedTemporaryFile
 from shutil import move
 import numpy as np
+import pyttsx3
 
 from winsound import SND_ASYNC, SND_FILENAME, PlaySound
 import keyboard
@@ -24,6 +25,15 @@ from PIL import Image, ImageDraw
 from configparser import ConfigParser
 from argparse import ArgumentParser
 
+# 修复PyInstaller打包后argparse报错的问题
+# 当stderr为None时，创建一个虚拟的stderr对象
+if not sys.stderr:
+    class DummyWriter:
+        def write(self, data):
+            logger.error(f"stderr output: {data}")
+        def flush(self):
+            pass
+    sys.stderr = DummyWriter()
 # ==================== 全局配置 ====================
 ICON_FILE = 'assets/icon.ico'
 SOUND_FILE = 'assets/rise_enable.wav'
@@ -38,12 +48,65 @@ KEEP = config.getint('lottery', 'keep', fallback=3)
 STUDENT_MODE = config.getint('lottery', 'student_mode', fallback=0)
 ENABLE_VOICE = config.getint('lottery', 'enable_voice', fallback=1)
 VOICE_TEMPLATE = config.get('lottery', 'voice_template', fallback='请{}号同学回答问题')
+VOICE_RATE = config.getint('lottery', 'voice_rate', fallback=200)
+VOICE_VOLUME = config.getfloat('lottery', 'voice_volume', fallback=1.0)
+VOICE_ID = config.get('lottery', 'voice_id', fallback='')
+
+# 命令行参数处理
+parser = ArgumentParser()
+parser.add_argument('--min-number', type=int, help='最小号码')
+parser.add_argument('--max-number', type=int, help='最大号码')
+parser.add_argument('--delay', type=int, help='延迟秒数')
+parser.add_argument('--keep', type=int, help='保持时间秒数')
+parser.add_argument('--student-mode', type=int, help='学生讲题模式: 0=关闭, 1=正序, 2=倒序')
+parser.add_argument('--enable-voice', type=int, help='启用语音叫号: 0=关闭, 1=开启')
+parser.add_argument('--voice-template', type=str, help='语音叫号模板，使用{}作为号码占位符')
+parser.add_argument('--voice-rate', type=int, help='语音速率')
+parser.add_argument('--voice-volume', type=float, help='语音音量')
+parser.add_argument('--voice-id', type=str, help='语音ID')
+args = parser.parse_args()
+
+if args.min_number is not None:
+    MIN_NUMBER = args.min_number
+if args.max_number is not None:
+    MAX_NUMBER = args.max_number
+if args.delay is not None:
+    DELAY = args.delay
+if args.keep is not None:
+    KEEP = args.keep
+if args.student_mode is not None:
+    STUDENT_MODE = args.student_mode
+if args.enable_voice is not None:
+    ENABLE_VOICE = args.enable_voice
+else:
+    ENABLE_VOICE = config.getint('lottery', 'enable_voice', fallback=1)
+
+if args.voice_template is not None:
+    VOICE_TEMPLATE = args.voice_template
+else:
+    VOICE_TEMPLATE = config.get('lottery', 'voice_template', fallback='请{}号同学回答问题')
+
+if args.voice_rate is not None:
+    VOICE_RATE = args.voice_rate
+else:
+    VOICE_RATE = config.getint('lottery', 'voice_rate', fallback=200)
+
+if args.voice_volume is not None:
+    VOICE_VOLUME = args.voice_volume
+else:
+    VOICE_VOLUME = config.getfloat('lottery', 'voice_volume', fallback=1.0)
+
+if args.voice_id is not None:
+    VOICE_ID = args.voice_id
+else:
+    VOICE_ID = config.get('lottery', 'voice_id', fallback='')
+
 
 # 学生名单
 STUDENTS = {}
 try:
     if os.path.exists('students.json'):
-        with open('students.json', 'r', encoding='utf-8') as f:
+        with open('students.json', encoding='utf-8') as f:
             STUDENTS = json.load(f)
         STUDENTS = {int(k): v for k, v in STUDENTS.items()}
 except Exception as e:
@@ -95,7 +158,7 @@ def init_logger():
 
     logger.info(f'程序启动 - 显示模式：{"三秒变动模式" if SHOW_MODE_3SEC else "直接显示模式"} - 抽取模式：{mode_text}')
     logger.info(f'配置参数: MIN_NUMBER={MIN_NUMBER}, MAX_NUMBER={MAX_NUMBER}, STUDENT_MODE={STUDENT_MODE}')
-    logger.info(f'语音叫号配置: ENABLE_VOICE={ENABLE_VOICE}, VOICE_TEMPLATE={VOICE_TEMPLATE}')
+    logger.info(f'语音叫号配置: ENABLE_VOICE={ENABLE_VOICE}, VOICE_TEMPLATE={VOICE_TEMPLATE}, VOICE_RATE={VOICE_RATE}, VOICE_VOLUME={VOICE_VOLUME}, VOICE_ID={VOICE_ID}')
     return logger
 
 
@@ -208,7 +271,6 @@ class DataManager:
 
 
 # ==================== 优化的随机点人算法 ====================
-import numpy as np
 
 class OptimizedClassroomSampler:
     """
@@ -631,8 +693,11 @@ def speak_number(number):
             speak_text = VOICE_TEMPLATE.format(str(number) + '号')
 
         engine = pyttsx3.init()
-        engine.setProperty('rate', 200)
-        engine.setProperty('volume', 1.0)
+        # 设置语音引擎参数
+        engine.setProperty('rate', VOICE_RATE)
+        engine.setProperty('volume', VOICE_VOLUME)
+        if VOICE_ID:  # 如果设置了语音ID，则使用指定的语音
+            engine.setProperty('voice', VOICE_ID)
         engine.say(speak_text)
         engine.runAndWait()
         logger.info(f'语音叫号成功: {speak_text}')
@@ -772,34 +837,3 @@ if __name__ == '__main__':
         except:
             pass
         sys.exit(1)
-
-# 命令行参数处理
-parser = ArgumentParser()
-parser.add_argument('--min-number', type=int, help='最小号码')
-parser.add_argument('--max-number', type=int, help='最大号码')
-parser.add_argument('--delay', type=int, help='延迟秒数')
-parser.add_argument('--keep', type=int, help='保持时间秒数')
-parser.add_argument('--student-mode', type=int, help='学生讲题模式: 0=关闭, 1=正序, 2=倒序')
-parser.add_argument('--enable-voice', type=int, help='启用语音叫号: 0=关闭, 1=开启')
-parser.add_argument('--voice-template', type=str, help='语音叫号模板，使用{}作为号码占位符')
-args = parser.parse_args()
-
-if args.min_number is not None:
-    MIN_NUMBER = args.min_number
-if args.max_number is not None:
-    MAX_NUMBER = args.max_number
-if args.delay is not None:
-    DELAY = args.delay
-if args.keep is not None:
-    KEEP = args.keep
-if args.student_mode is not None:
-    STUDENT_MODE = args.student_mode
-if args.enable_voice is not None:
-    ENABLE_VOICE = args.enable_voice
-else:
-    ENABLE_VOICE = config.getint('lottery', 'enable_voice', fallback=1)
-
-if args.voice_template is not None:
-    VOICE_TEMPLATE = args.voice_template
-else:
-    VOICE_TEMPLATE = config.get('lottery', 'voice_template', fallback='请{}号同学回答问题')

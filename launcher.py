@@ -23,28 +23,13 @@ class LauncherApp(QMainWindow):
         self.config_file = 'config.ini'
         self.load_config()
 
-        # 查找可用的程序版本
-        self.exe_files = self.find_exe_files()
+        # 初始化exe文件列表为空
+        self.exe_files = {}
         self.selected_version = None
+        self.version_group = None  # 为了兼容性，添加此变量
 
         # 创建界面
         self.init_ui()
-
-        # 设置默认选中的版本
-        if self.exe_files:
-            latest_version = self.get_latest_version()
-            self.selected_version = latest_version
-
-        # 检查学生名单
-        self.check_student_list()
-
-        # 检查守护进程
-        if not self.find_daemon_exe():
-            QMessageBox.warning(
-                self,
-                "警告",
-                "未找到守护进程(daemon.exe或daemon.py)，程序稳定性将无法保证"
-            )
 
     def load_config(self):
         """加载配置文件"""
@@ -53,31 +38,7 @@ class LauncherApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"无法读取配置文件: {e}")
 
-    def find_exe_files(self):
-        """查找当前目录下所有的课堂抽号程序exe文件"""
-        exe_pattern = os.path.join('.', '课堂抽号程序*.exe')
-        exe_files = glob(exe_pattern)
-        # 提取版本号信息
-        versions = {}
-        for exe in exe_files:
-            basename = os.path.basename(exe)
-            if basename == '课堂抽号程序.exe':
-                versions[basename] = {'version': '1.0', 'path': exe}
-            else:
-                # 提取版本号，例如 课堂抽号程序2.0.exe -> 2.0
-                version = basename.replace('课堂抽号程序', '').replace('.exe', '')
-                versions[basename] = {'version': version, 'path': exe}
-        return versions
 
-    def get_latest_version(self):
-        """获取最新版本"""
-        if not self.exe_files:
-            return ""
-
-        # 简单排序，找出最大的版本号
-        versions = [(v['version'], name) for name, v in self.exe_files.items()]
-        versions.sort(key=lambda x: x[0], reverse=True)
-        return versions[0][1]
 
     def check_student_list(self):
         """检查是否存在学生名单"""
@@ -177,6 +138,36 @@ class LauncherApp(QMainWindow):
         voice_layout.addWidget(self.voice_template_edit)
         config_layout.addLayout(voice_layout)
 
+        # 语音设置区域
+        voice_setting_layout = QHBoxLayout()
+        voice_setting_layout.addWidget(QLabel("语速:"), 1)
+        self.voice_rate_edit = QLineEdit()
+        self.voice_rate_edit.setText(self.config.get('lottery', 'voice_rate', fallback='200'))
+        self.voice_rate_edit.setFixedWidth(100)
+        voice_setting_layout.addWidget(self.voice_rate_edit)
+        config_layout.addLayout(voice_setting_layout)
+
+        voice_volume_layout = QHBoxLayout()
+        voice_volume_layout.addWidget(QLabel("音量:"), 1)
+        self.voice_volume_edit = QLineEdit()
+        self.voice_volume_edit.setText(self.config.get('lottery', 'voice_volume', fallback='1.0'))
+        self.voice_volume_edit.setFixedWidth(100)
+        voice_volume_layout.addWidget(self.voice_volume_edit)
+        config_layout.addLayout(voice_volume_layout)
+
+        # 语音选择
+        voice_select_layout = QHBoxLayout()
+        voice_select_layout.addWidget(QLabel("语音:"), 1)
+        self.voice_combo = QComboBox()
+        self.voice_combo.setFixedWidth(200)
+        self.populate_voice_list()
+        current_voice_id = self.config.get('lottery', 'voice_id', fallback='')
+        index = self.voice_combo.findData(current_voice_id)
+        if index >= 0:
+            self.voice_combo.setCurrentIndex(index)
+        voice_select_layout.addWidget(self.voice_combo)
+        config_layout.addLayout(voice_select_layout)
+
         main_layout.addWidget(config_group)
 
         # 学生名单导入区域
@@ -197,22 +188,7 @@ class LauncherApp(QMainWindow):
 
         main_layout.addWidget(student_group)
 
-        # 版本选择区域
-        version_group = QGroupBox("程序版本选择")
-        version_layout = QVBoxLayout(version_group)
 
-        self.version_group = QButtonGroup()
-        if self.exe_files:
-            for name in self.exe_files.keys():
-                radio = QRadioButton(name)
-                if self.selected_version and name == self.selected_version:
-                    radio.setChecked(True)
-                self.version_group.addButton(radio)
-                version_layout.addWidget(radio)
-        else:
-            version_layout.addWidget(QLabel("未找到可执行文件"))
-
-        main_layout.addWidget(version_group)
 
         # 按钮区域
         button_layout = QHBoxLayout()
@@ -253,6 +229,9 @@ class LauncherApp(QMainWindow):
             # 保存语音叫号配置
             self.config.set('lottery', 'enable_voice', '1' if self.voice_checkbox.isChecked() else '0')
             self.config.set('lottery', 'voice_template', self.voice_template_edit.text())
+            self.config.set('lottery', 'voice_rate', self.voice_rate_edit.text())
+            self.config.set('lottery', 'voice_volume', self.voice_volume_edit.text())
+            self.config.set('lottery', 'voice_id', self.voice_combo.currentData() or '')
 
             # 写入文件
             with open(self.config_file, 'w', encoding='utf-8') as configfile:
@@ -370,6 +349,29 @@ class LauncherApp(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "错误", f"导入失败: {str(e)}")
 
+    def populate_voice_list(self):
+        """填充语音列表"""
+        try:
+            import pyttsx3
+            engine = pyttsx3.init()
+            voices = engine.getProperty('voices')
+            
+            self.voice_combo.clear()
+            
+            if not voices:
+                self.voice_combo.addItem('无可用语音', '')
+            else:
+                for i, voice in enumerate(voices):
+                    # 显示语音名称，存储语音ID
+                    display_name = f"{voice.name}" if voice.name else f"Voice {i}"
+                    self.voice_combo.addItem(display_name, voice.id)
+                    
+        except ImportError:
+            self.voice_combo.addItem('pyttsx3未安装', '')
+        except Exception as e:
+            self.voice_combo.addItem('获取语音列表失败', '')
+            print(f"获取语音列表时出错: {e}")
+
     def find_daemon_exe(self):
         """查找守护进程可执行文件"""
         daemon_path = os.path.join('.', 'daemon.exe')
@@ -386,16 +388,7 @@ class LauncherApp(QMainWindow):
         # 先保存配置
         self.save_config()
 
-        # 获取选中的版本
-        selected_radio = self.version_group.checkedButton()
-        if not selected_radio:
-            QMessageBox.warning(self, "警告", "请先选择一个程序版本")
-            return
 
-        selected = selected_radio.text()
-        if selected not in self.exe_files:
-            QMessageBox.critical(self, "错误", "选择的程序版本不存在")
-            return
 
         # 查找守护进程
         daemon_exe = self.find_daemon_exe()
@@ -417,7 +410,8 @@ class LauncherApp(QMainWindow):
                 return
 
         try:
-            exe_path = self.exe_files[selected]['path']
+            # 默认使用main.py作为程序路径
+            exe_path = 'main.py'
             # 获取模式值
             mode_value = self.mode_combo.currentData()
             # 构建传递给主程序的参数
@@ -428,7 +422,10 @@ class LauncherApp(QMainWindow):
                 f"--keep={self.keep_edit.text()}",
                 f"--student-mode={mode_value}",
                 f"--enable-voice={'1' if self.voice_checkbox.isChecked() else '0'}",
-                f"--voice-template={self.voice_template_edit.text()}"
+                f"--voice-template={self.voice_template_edit.text()}",
+                f"--voice-rate={self.voice_rate_edit.text()}",
+                f"--voice-volume={self.voice_volume_edit.text()}",
+                f"--voice-id={self.voice_combo.currentData() or ''}"
             ]
             # 构建守护进程命令
             # 统一使用 "--" 分隔符区分参数，无论使用exe还是py形式的守护进程
@@ -438,7 +435,7 @@ class LauncherApp(QMainWindow):
                 cmd = [daemon_exe, exe_path, "--"] + program_args
             # 启动守护进程
             Popen(cmd, shell=True)
-            QMessageBox.information(self, "提示", f"正在启动 {selected} (守护进程)")
+            QMessageBox.information(self, "提示", f"正在启动 {exe_path} (守护进程)")
             # 启动成功后自动关闭启动器
             self.close()
         except Exception as e:
