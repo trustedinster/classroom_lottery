@@ -121,12 +121,12 @@ else:
 if args.voice_id is not None:
     VOICE_ID = args.voice_id
 else:
-    VOICE_ID = config.getint('lottery', 'dynamic_voice', fallback=0)
+    VOICE_ID = config.getint('lottery', 'voice_id', fallback=0)
 
 if args.dynamic_voice is not None:
     dynamic_voice_layout = args.dynamic_voice
 else:
-    VOICE_ID = config.get('lottery', 'voice_id', fallback='')
+    dynamic_voice_layout = config.get('lottery', 'dynamic_voice', fallback='')
 
 
 # 学生名单
