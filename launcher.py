@@ -138,11 +138,17 @@ class LauncherApp(QMainWindow):
         voice_layout.addWidget(self.voice_template_edit)
         config_layout.addLayout(voice_layout)
 
+        # 灵活地叫号设置
+        self.dynamic_voice_layout = QCheckBox("启用灵活的形容词")
+        enable_voice = self.config.get('lottery', 'dynamic_voice_layout', fallback='1')
+        self.dynamic_voice_layout.setChecked(enable_voice == '1')
+        voice_layout.addWidget(self.dynamic_voice_layout)
+
         # 语音设置区域
         voice_setting_layout = QHBoxLayout()
         voice_setting_layout.addWidget(QLabel("语速:"), 1)
         self.voice_rate_edit = QLineEdit()
-        self.voice_rate_edit.setText(self.config.get('lottery', 'voice_rate', fallback='200'))
+        self.voice_rate_edit.setText(self.config.get('lottery', 'voice_rate', fallback='150'))
         self.voice_rate_edit.setFixedWidth(100)
         voice_setting_layout.addWidget(self.voice_rate_edit)
         config_layout.addLayout(voice_setting_layout)
@@ -180,6 +186,7 @@ class LauncherApp(QMainWindow):
 
         # 添加学生信息显示标签
         self.student_info_label = QLabel("未加载学生名单")
+        self.check_student_list()
         student_layout.addWidget(self.student_info_label)
 
         note_label = QLabel("注意: CSV文件应包含'学号','姓名'列，Excel文件第一列为学号，第二列为姓名")
@@ -232,7 +239,8 @@ class LauncherApp(QMainWindow):
             self.config.set('lottery', 'voice_rate', self.voice_rate_edit.text())
             self.config.set('lottery', 'voice_volume', self.voice_volume_edit.text())
             self.config.set('lottery', 'voice_id', self.voice_combo.currentData() or '')
-
+            self.config.set('lottery', 'dynamic_voice', '1'
+            if self.dynamic_voice_layout.isChecked() else '0')
             # 写入文件
             with open(self.config_file, 'w', encoding='utf-8') as configfile:
                 self.config.write(configfile)

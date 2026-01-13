@@ -76,7 +76,6 @@ a_main = Analysis(
         'pyttsx3.drivers.espeak',
         'pyttsx3.drivers.nsss',
         'pyttsx3.drivers.sapi5',
-        'winsound',
         'keyboard',
         'configparser',
         'json',

@@ -2,6 +2,7 @@
 """
 课堂号数抽取程序（PySide2重构版）- 解决线程安全问题
 """
+import random
 import sys
 import json
 import pickle
@@ -15,8 +16,9 @@ from shutil import move
 import numpy as np
 import pyttsx3
 
-from winsound import SND_ASYNC, SND_FILENAME, PlaySound
-import keyboard
+from PySide2.QtMultimedia import QSoundEffect
+from PySide2.QtCore import QUrl, QCoreApplication
+from pynput import keyboard
 from PySide2.QtWidgets import (QApplication, QDialog, QLabel, QVBoxLayout,
                                QSystemTrayIcon, QMenu, QAction, QMessageBox)
 from PySide2.QtCore import Qt, QTimer, Signal, QObject
@@ -37,20 +39,29 @@ if not sys.stderr:
 # ==================== 全局配置 ====================
 ICON_FILE = 'assets/icon.ico'
 SOUND_FILE = 'assets/rise_enable.wav'
+classroom_adjectives = [
+    "聪明的",
+    "勤奋的",
+    "积极的",
+    "认真的",
+    "用心的",
+    "细心的",
+    "专注的",
+    "机智的",
+    "灵巧的",
+    "灵敏的",
+    "主动的",
+    "勤劳的",
+    "刻苦的",
+    "虚心的",
+    "友善的",
+    "有趣的",
+    "创新的"
+]
 
 # 配置文件读取
 config = ConfigParser()
 config.read('config.ini', encoding='utf-8')
-MIN_NUMBER = config.getint('lottery', 'min_number', fallback=1)
-MAX_NUMBER = config.getint('lottery', 'max_number', fallback=48)
-DELAY = config.getint('lottery', 'delay', fallback=3)
-KEEP = config.getint('lottery', 'keep', fallback=3)
-STUDENT_MODE = config.getint('lottery', 'student_mode', fallback=0)
-ENABLE_VOICE = config.getint('lottery', 'enable_voice', fallback=1)
-VOICE_TEMPLATE = config.get('lottery', 'voice_template', fallback='请{}号同学回答问题')
-VOICE_RATE = config.getint('lottery', 'voice_rate', fallback=200)
-VOICE_VOLUME = config.getfloat('lottery', 'voice_volume', fallback=1.0)
-VOICE_ID = config.get('lottery', 'voice_id', fallback='')
 
 # 命令行参数处理
 parser = ArgumentParser()
@@ -64,18 +75,29 @@ parser.add_argument('--voice-template', type=str, help='语音叫号模板，使
 parser.add_argument('--voice-rate', type=int, help='语音速率')
 parser.add_argument('--voice-volume', type=float, help='语音音量')
 parser.add_argument('--voice-id', type=str, help='语音ID')
+parser.add_argument('--dynamic-voice', type=int, help="是否开启灵活的形容词")
 args = parser.parse_args()
 
 if args.min_number is not None:
     MIN_NUMBER = args.min_number
+else:
+    MIN_NUMBER = config.getint('lottery', 'min_number', fallback=1)
 if args.max_number is not None:
     MAX_NUMBER = args.max_number
+else:
+    MAX_NUMBER = config.getint('lottery', 'max_number', fallback=48)
 if args.delay is not None:
     DELAY = args.delay
+else:
+    DELAY = config.getint('lottery', 'delay', fallback=3)
 if args.keep is not None:
     KEEP = args.keep
+else:
+    KEEP = config.getint('lottery', 'keep', fallback=3)
 if args.student_mode is not None:
     STUDENT_MODE = args.student_mode
+else:
+    STUDENT_MODE = config.getint('lottery', 'student_mode', fallback=0)
 if args.enable_voice is not None:
     ENABLE_VOICE = args.enable_voice
 else:
@@ -98,6 +120,11 @@ else:
 
 if args.voice_id is not None:
     VOICE_ID = args.voice_id
+else:
+    VOICE_ID = config.getint('lottery', 'dynamic_voice', fallback=0)
+
+if args.dynamic_voice is not None:
+    dynamic_voice_layout = args.dynamic_voice
 else:
     VOICE_ID = config.get('lottery', 'voice_id', fallback='')
 
@@ -166,10 +193,19 @@ def play_startup_sound():
     sound_path = os.path.join(os.getcwd(), SOUND_FILE)
     if os.path.exists(sound_path):
         try:
-            Thread(
-                target=lambda: PlaySound(sound_path, SND_FILENAME | SND_ASYNC),
-                daemon=True
-            ).start()
+            effect = QSoundEffect()
+            # 设置音频源，需要使用绝对路径
+            effect.setSource(QUrl.fromLocalFile(sound_path))
+
+            # 关键：防止函数返回后对象被立即回收
+            # 将 QSoundEffect 对象挂载到 QCoreApplication 实例上
+            if QCoreApplication.instance():
+                effect.setParent(QCoreApplication.instance())
+
+            # 设置音量 (可选，默认为 1.0)
+            # effect.setVolume(1.0)
+
+            effect.play()
             logger.info(f'启动音效播放成功：{SOUND_FILE}')
         except Exception as e:
             logger.warning(f'启动音效播放失败：{str(e)}')
@@ -686,10 +722,9 @@ def speak_number(number):
 
     try:
         student_name = STUDENTS.get(number)
-        if student_name:
-            speak_text = VOICE_TEMPLATE.format(student_name)
-        else:
-            speak_text = VOICE_TEMPLATE.format(str(number) + '号')
+        after_handle = (random.choice(classroom_adjectives)
+                        if dynamic_voice_layout else "" ) + student_name if student_name else str(number) + '号'
+        speak_text = VOICE_TEMPLATE.format(after_handle)
 
         engine = pyttsx3.init()
         # 设置语音引擎参数
@@ -723,24 +758,45 @@ class LotteryApp:
 
         # 播放启动音效
         play_startup_sound()
+        self.hotkey_listener = None
 
     def create_tray_icon(self):
         global tray_icon
-        icon_path = os.path.join(os.getcwd(), ICON_FILE)
 
-        try:
-            icon = QIcon(icon_path)
-            logger.info(f'成功加载图标文件：{ICON_FILE}')
-        except Exception as e:
-            logger.warning(f'图标文件加载失败，使用默认图标：{str(e)}')
-            # 创建默认图标
-            pixmap = Image.new('RGB', (64, 64), 'red')
+        # ==================== 跨平台图标路径选择 ====================
+        icon_path = ''
+        if sys.platform == 'win32':
+            # Windows 使用 .ico
+            icon_path = os.path.join(os.getcwd(), 'assets/icon.ico')
+        elif sys.platform == 'darwin':
+            # macOS 使用 .icns
+            icon_path = os.path.join(os.getcwd(), 'assets/icon.icns')
+        else:
+            # Linux 或其他平台备选（例如 .png）
+            icon_path = os.path.join(os.getcwd(), 'assets/icon.png')
+
+        # ==================== 加载图标 ====================
+        icon = QIcon()
+        if os.path.exists(icon_path):
+            try:
+                icon = QIcon(icon_path)
+                if icon.isNull():
+                    raise ValueError("加载的图标为空，可能文件损坏")
+                logger.info(f'成功加载图标文件：{icon_path}')
+            except Exception as e:
+                logger.warning(f'图标文件 {icon_path} 加载失败：{str(e)}')
+
+        # ==================== 生成默认图标（备用） ====================
+        if icon.isNull():
+            logger.warning('未找到适配平台的图标文件，生成默认红色圆形图标')
+            # 创建一个简单的 PNG 内存图标
+            pixmap = Image.new('RGBA', (64, 64), (255, 0, 0, 255))
             draw = ImageDraw.Draw(pixmap)
-            draw.ellipse((10, 10, 54, 54), fill='darkred')
-            # 转换为QIcon
-            qim = QImage(pixmap)
+            draw.ellipse((10, 10, 54, 54), fill=(200, 0, 0, 255))
+            qim = QImage(pixmap.tobytes(), pixmap.width, pixmap.height, QImage.Format_RGBA8888)
             icon = QIcon(QPixmap.fromImage(qim))
 
+        # ==================== 创建托盘对象 ====================
         tray_icon = QSystemTrayIcon(icon, self.app)
         tray_icon.setToolTip('课堂抽号（快捷键：按alt）')
 
@@ -751,21 +807,43 @@ class LotteryApp:
         tray_menu.addAction(exit_action)
 
         tray_icon.setContextMenu(tray_menu)
-        tray_icon.show()
-        logger.info('托盘功能启动成功')
+
+        # 显示托盘图标
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            tray_icon.show()
+            logger.info('托盘功能启动成功')
+        else:
+            logger.error('当前系统不支持系统托盘')
 
     def start_hotkey_listener(self):
-        global hotkey_listener
+        """
+        使用 pynput 替代 keyboard，解决 macOS 跨平台问题
+        注意：在 macOS 系统设置 -> 隐私与安全性 -> 辅助功能 中，必须添加 Python 或终端/IDE 并授权
+        """
         try:
-            keyboard.add_hotkey(HOTKEY, self.on_hotkey)
-            hotkey_listener = Thread(target=keyboard.wait)
-            hotkey_listener.daemon = True
-            hotkey_listener.start()
-            logger.info(f'快捷键监听启动成功（{HOTKEY}）')
+            # 定义按键按下时的处理函数
+            def on_press(key):
+                try:
+                    # 检测是否按下了 Alt 键 (兼容左 Alt 和右 Alt)
+                    # 注意：如果配置文件中有其他快捷键配置，这里需要解析配置
+                    # 目前根据原代码，HOTKEY 默认为 'alt'
+                    if key == keyboard.Key.alt or key == keyboard.Key.alt_l or key == keyboard.Key.alt_r:
+                        self.on_hotkey()
+                except AttributeError:
+                    pass
+
+            # 创建监听器，非阻塞模式
+            self.hotkey_listener = keyboard.Listener(on_press=on_press)
+            self.hotkey_listener.start()
+
+            logger.info(f'全局快捷键监听已启动 ({HOTKEY})')
             return True
         except Exception as e:
-            logger.error(f'快捷键注册失败：{str(e)}')
-            QMessageBox.warning(None, '警告', f'快捷键注册失败，可能存在冲突！')
+            logger.error(f'全局快捷键监听启动失败：{str(e)}')
+            # 在 macOS 上，如果未授权，这里通常会抛出异常
+            QMessageBox.warning(None, '权限警告',
+                                'macOS 需要授予 Python 辅助功能权限才能使用全局快捷键。\n'
+                                '请前往：系统设置 -> 隐私与安全性 -> 辅助功能 -> 添加 Python/终端')
             return False
 
     def on_hotkey(self):
@@ -797,11 +875,10 @@ class LotteryApp:
     def exit_app(self):
         global tray_icon
         logger.info('用户通过托盘退出程序')
-        try:
-            if hotkey_listener:
-                keyboard.unhook_all()
-        except:
-            pass
+
+        # 停止 pynput 监听
+        if self.hotkey_listener:
+            self.hotkey_listener.stop()
 
         if tray_icon:
             tray_icon.hide()
